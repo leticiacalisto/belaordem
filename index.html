@@ -1,0 +1,2178 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bela Ordem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f7f7f9; --surface:#fff; --line:#ebebf0; --line-2:#f2f2f6;
+  --text:#18181d; --muted:#62626e; --faint:#a4a4ae;
+  --accent:#6e3fd8; --accent-2:#8b5cf6; --accent-soft:#efe8fe; --accent-ink:#5a2cc4; --brand:#3f1a6b;
+  --yel-bg:#fcf5d4; --yel:#f2a900; --grn-bg:#dff5e8; --grn:#1ea75a; --red-bg:#fde4e6; --red:#e23d4b;
+  --gold:#b89330;
+  --r:16px;
+  --font:'Outfit',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{font-family:var(--font);font-size:13.5px;font-weight:300;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.ic{flex:none;display:block}
+
+/* ---------- topo ---------- */
+.topbar{position:sticky;top:0;z-index:30;height:60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:20px;padding:0 24px}
+.logo{display:flex;align-items:center;gap:2px;font-size:23px;font-weight:400;letter-spacing:-.02em;color:var(--brand);cursor:pointer;width:200px;flex:none;border:0;background:none;padding:0}
+.logo svg{color:var(--accent-2);margin-top:3px}
+.search{position:relative;flex:1;max-width:524px}
+.search input{width:100%;height:36px;border:1px solid transparent;background:#f3f3f6;border-radius:10px;padding:0 40px;font-size:13.5px;outline:none}
+.search input::placeholder{color:#8a8a94}
+.search input:focus{background:#fff;border-color:#d9d2f5;box-shadow:0 0 0 3px var(--accent-soft)}
+.search .ic{position:absolute;left:13px;top:10px;color:var(--faint)}
+.search kbd{position:absolute;right:10px;top:8px;font-family:inherit;font-size:11px;color:var(--faint);background:#e9e9ee;border-radius:6px;padding:2px 7px}
+.search-results{position:absolute;top:44px;left:0;right:0;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(20,20,40,.12);padding:6px;max-height:440px;overflow:auto}
+.sr-group{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);padding:10px 10px 4px}
+.sr-item{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;border:0;background:none;padding:9px 10px;border-radius:8px}
+.sr-item:hover,.sr-item:focus{background:var(--accent-soft);outline:none}
+.sr-item small{color:var(--faint);white-space:nowrap}
+.sr-vazio{padding:14px;color:var(--faint)}
+.top-actions{margin-left:auto;display:flex;align-items:center;gap:12px}
+.save-status{font-size:12.5px;color:var(--grn);display:flex;align-items:center;gap:7px;white-space:nowrap}
+.save-status::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.save-status.erro{color:var(--red)}
+.icon-btn{width:36px;height:36px;border:1px solid var(--line);background:#fff;border-radius:10px;display:grid;place-items:center;color:var(--text)}
+.icon-btn:hover{background:#f6f6f9}
+.menu-toggle{display:none}
+
+/* ---------- menu lateral ---------- */
+.layout{display:flex;min-height:calc(100vh - 60px)}
+.sidebar{width:236px;flex:none;background:#fff;border-right:1px solid var(--line);position:sticky;top:60px;height:calc(100vh - 60px);display:flex;flex-direction:column}
+.th-btn{display:inline-flex;align-items:center;gap:3px;border:0;background:none;padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;white-space:nowrap}
+.th-btn:hover,.th-btn.on{color:var(--accent-ink)}
+.th-btn .seta{display:inline-block;min-width:8px;font-size:11px}
+th.num .th-btn{flex-direction:row-reverse}
+.tb-prod th{padding:10px 8px}
+.tb-prod td{padding:7px 8px}
+.tb-prod td:not(.num):not(.prod){white-space:normal}
+.tb-prod .prod{min-width:150px;max-width:230px}
+.tb-prod .chips{flex-wrap:wrap}
+.tb-prod .btn-sm{padding:0 8px}
+.mc-pend .mc-prod{border-color:#f1c2c7;background:var(--red-bg)}
+.sidebar-espaco,.btn-pin{display:none}
+.btn-pin{width:26px;height:26px;align-items:center;justify-content:center;background:rgba(98,98,110,.08);border:0;border-radius:8px;color:var(--faint);opacity:.7;transition:opacity .2s,background .2s,color .2s}
+.btn-pin svg{transform:rotate(40deg);transition:transform .2s}
+.btn-pin:hover{opacity:1;background:rgba(98,98,110,.14);color:var(--muted)}
+.btn-pin.fixada{opacity:1;color:var(--accent);background:var(--accent-soft)}
+.btn-pin.fixada svg{transform:rotate(0)}
+.pin-row{display:flex;justify-content:flex-end;padding:12px 14px 0}
+@media (min-width:961px){
+  /* menu flutuante: recolhido mostra só os ícones, abre ao passar o mouse; o pin trava aberto */
+  .sidebar-espaco{display:block;width:64px;flex:none;transition:width .45s cubic-bezier(.4,0,.2,1)}
+  .sidebar-espaco.fixada{width:236px}
+  .sidebar{position:fixed;left:0;z-index:20;width:64px;overflow-x:hidden;transition:width .45s cubic-bezier(.4,0,.2,1),box-shadow .45s ease}
+  .sidebar.pairando{width:236px;box-shadow:20px 0 40px rgba(20,20,40,.1)}
+  .sidebar.fixada{width:236px}
+  .btn-pin{display:flex}
+  .sidebar:not(.pairando):not(.fixada) .pin-row{justify-content:center}
+  .sidebar:not(.pairando):not(.fixada) .nav-sec,
+  .sidebar:not(.pairando):not(.fixada) .nav-item span,
+  .sidebar:not(.pairando):not(.fixada) .badge{display:none}
+  .sidebar:not(.pairando):not(.fixada) .nav-sec:not(:first-child){display:block;font-size:0;padding:0;margin:8px 16px 0}
+  .nav-item{white-space:nowrap}
+}
+.nav{flex:1;overflow:auto;padding:14px 0 12px}
+.nav-sec{font-size:10px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:14px 22px 8px}
+.nav-sec:not(:first-child){border-top:1px solid var(--line);margin:12px 16px 0;padding:18px 6px 8px}
+.nav-item{display:flex;align-items:center;gap:12px;width:100%;height:40px;padding:0 22px;border:0;border-left:2px solid transparent;background:none;color:#3b3b44;font-size:13.5px;text-align:left}
+.nav-item:hover{background:#f8f7fc}
+.nav-item.on{background:var(--accent-soft);color:var(--accent-ink);border-left-color:var(--accent)}
+.badge{margin-left:auto;min-width:19px;height:19px;border-radius:10px;background:var(--gold);color:#fff;font-size:11px;font-weight:500;display:grid;place-items:center;padding:0 6px}
+.nav-foot{border-top:1px solid var(--line);padding:8px 0}
+.nav-foot .nav-item{color:var(--accent-ink)}
+
+/* ---------- conteúdo ---------- */
+.main{flex:1;min-width:0;padding:34px 44px 70px}
+.page{max-width:1480px}
+.page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+h1{font-size:23px;font-weight:500;letter-spacing:-.01em;margin:0}
+.sub{margin:4px 0 0;color:var(--muted);font-size:13.5px;font-weight:300}
+.head-actions{display:flex;gap:12px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 16px;border-radius:8px;border:1px solid var(--text);background:#fff;font-size:13px;font-weight:400;white-space:nowrap}
+.btn:hover{background:#f6f6f9}
+.btn-dark{background:var(--text);color:#fff}
+.btn-dark:hover{background:#2e2e36}
+.btn-sm{height:28px;padding:0 10px;font-size:12px;border-radius:7px;border-width:1px}
+.btn-soft{border-color:var(--line)}
+.btn-danger{border-color:#f1c2c7;color:var(--red)}
+.btn-danger:hover{background:var(--red-bg)}
+.btn-link{border:0;background:none;color:var(--muted);font-size:13px;padding:0;display:inline-flex;gap:6px;align-items:center}
+.btn-link:hover{color:var(--text)}
+.sec-head{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin:0 0 18px}
+.sec-head h2,.side-card h2{margin:0;font-size:12px;font-weight:500;letter-spacing:.12em;text-transform:uppercase}
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--r)}
+.grid-home{display:grid;grid-template-columns:minmax(0,1fr) 424px;gap:26px;align-items:start}
+.grid-side{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:22px}
+.block{margin-bottom:36px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr)}
+.kpi{padding:18px 22px;border-left:1px solid var(--line-2)}
+.kpi:first-child{border-left:0}
+.kpi-l{font-size:12px;color:var(--muted)}
+.kpi-v{font-size:20px;font-weight:500;margin-top:4px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.kpi-s{font-size:11.5px;color:var(--faint);margin-top:2px}
+.bars{padding:22px 26px}
+.bar-row{display:grid;grid-template-columns:minmax(0,300px) 1fr 44px;gap:18px;align-items:center;min-height:32px}
+.bar-name{display:flex;align-items:center;gap:10px;color:#4a3a78;white-space:nowrap;overflow:hidden}
+.bar-name span:last-child{overflow:hidden;text-overflow:ellipsis}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.track{height:8px;border-radius:4px;background:#ececf1;overflow:hidden}
+.fill{height:100%;border-radius:4px}
+.bar-n{text-align:right;color:var(--faint);font-variant-numeric:tabular-nums}
+.empty-box{padding:46px 20px;text-align:center;color:var(--muted)}
+.empty-box .ic{margin:0 auto 12px;color:#e0b43a}
+.date-card{padding:26px 24px 24px}
+.date-top{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:18px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.date-n{font-size:44px;font-weight:500;line-height:1;letter-spacing:-.03em}
+.date-m{font-size:14px;color:var(--muted);margin-top:14px}
+.date-w{color:var(--faint);font-size:13px}
+.tile{width:40px;height:40px;border-radius:10px;background:#f1f1f4;display:grid;place-items:center;color:var(--muted)}
+.pills{display:flex;flex-direction:column;gap:12px}
+.pill{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;font-size:13px;border:0;width:100%;text-align:left}
+.pill b{margin-left:auto;font-weight:500}
+.pill.y{background:var(--yel-bg);color:#5c4700}.pill.y .dot{background:var(--yel)}.pill.y b{color:#7a5200}
+.pill.g{background:var(--grn-bg);color:#17512f}.pill.g .dot{background:var(--grn)}
+.pill.r{background:var(--red-bg);color:#6c1b22}.pill.r .dot{background:var(--red)}.pill.r b{color:#b3202e}
+.side-card{padding:22px 24px}
+.side-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px}
+.empty-note{font-style:italic;color:#b9b9c2;font-weight:300;margin:4px 0}
+.mini-list{list-style:none;margin:0;padding:0}
+.mini-list li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--line-2);font-size:13px}
+.mini-list li:first-child{border-top:0}
+.ml-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- filtros e abas ---------- */
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.field-search{position:relative;flex:1;min-width:220px;max-width:380px}
+.field-search input{width:100%;height:34px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:0 12px 0 34px;font-size:13px;outline:none}
+.field-search .ic{position:absolute;left:10px;top:9px;color:var(--faint)}
+.sel{height:34px;font-size:13px;border:1px solid var(--line);background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 11px center;border-radius:8px;padding:0 32px 0 12px;outline:none;appearance:none;-webkit-appearance:none;max-width:100%}
+input:focus,select:focus,textarea:focus{border-color:#cbbdf6!important;box-shadow:0 0 0 3px var(--accent-soft)}
+.check{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;user-select:none}
+.check input{accent-color:var(--accent);width:14px;height:14px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px;overflow-x:auto}
+.tab{border:0;background:none;padding:8px 12px;font-size:13px;color:var(--muted);border-bottom:1.5px solid transparent;margin-bottom:-1px;display:flex;gap:8px;align-items:center;white-space:nowrap}
+.tab:hover{color:var(--text)}
+.tab.on{color:var(--text);border-bottom-color:var(--text);font-weight:500}
+.tab-n{font-size:11px;background:#f0f0f4;color:var(--muted);border-radius:10px;padding:1px 8px;font-weight:400}
+.summary{display:flex;gap:22px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin:0 0 12px}
+.summary b{color:var(--text);font-weight:500;font-variant-numeric:tabular-nums}
+.note{font-size:12px;color:var(--faint);margin:10px 2px 0}
+
+/* ---------- tabelas ---------- */
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:var(--r);background:#fff;max-height:calc(100vh - 300px);min-height:120px}
+.table-wrap.livre{max-height:none}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px}
+th{position:sticky;top:0;background:#fbfbfd;z-index:1;text-align:left;font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:7px 12px;border-bottom:1px solid var(--line-2);white-space:nowrap;vertical-align:middle}
+tbody tr:hover td{background:#fcfbff}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.neg{color:var(--red)}
+.faint{color:var(--faint)}
+.muted{color:var(--muted)}
+.prod{white-space:normal;min-width:230px;max-width:360px}
+.pn{font-weight:400;line-height:1.3}
+.pm{font-size:11px;color:var(--faint)}
+.qtd{display:inline-grid;place-items:center;min-width:26px;height:20px;padding:0 6px;border-radius:6px;background:#f1eefb;color:var(--accent-ink);font-weight:500;font-size:12px}
+.row-actions{display:flex;gap:6px;justify-content:flex-end;align-items:center}
+.ghost-ic{width:28px;height:28px;border-radius:7px;border:0;background:none;display:grid;place-items:center;color:var(--faint)}
+.ghost-ic:hover{background:#f1f1f5;color:var(--text)}
+tr.total td{font-weight:500;background:#fbfbfd;border-top:1px solid var(--line);position:sticky;bottom:0}
+tr.clic{cursor:pointer}
+tr.sub td{background:#fcfcfe;font-size:12px}
+td.empty-cell{padding:40px;text-align:center;color:var(--faint);white-space:normal}
+.more{display:flex;justify-content:center;padding:14px}
+.minibar{height:6px;border-radius:3px;background:#ececf1;width:120px;overflow:hidden;display:inline-block;vertical-align:middle}
+.minibar i{display:block;height:100%;background:var(--accent-2);border-radius:3px}
+.minibar.neg i{background:var(--red)}
+
+/* ---------- etiquetas ---------- */
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:5px;font-size:11.5px;white-space:nowrap;background:#f0f0f3;color:#44444c}
+.c-green{background:#e2f3e8;color:#1f6b3d}.c-orange{background:#fbe9da;color:#8f4a12}.c-brown{background:#f1e7df;color:#6e4b32}
+.c-pink{background:#f9e3ef;color:#8e2f60}.c-red{background:#fbe2e2;color:#a2282e}.c-yellow{background:#faf1cf;color:#7a5b00}
+.c-blue{background:#e1ecfa;color:#1f5596}.c-gray{background:#ececef;color:#55555e}.c-purple{background:#eee5fb;color:#5b2fa6}
+.c-default{background:#f0f0f3;color:#4a4a52}.c-plain{background:transparent;color:inherit;padding:0}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+
+/* ---------- quadro por categoria ---------- */
+.board{display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;align-items:flex-start}
+.col{width:260px;flex:none;background:#f0f0f4;border-radius:14px;padding:10px}
+.col-h{display:flex;justify-content:space-between;align-items:center;padding:4px 6px 10px;font-size:13px}
+.bcard{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.bcard:hover{border-color:#d6ccf4}
+.bt{font-size:13px;font-weight:400;line-height:1.3;margin-bottom:6px}
+.bm{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--muted);gap:8px}
+
+/* ---------- janelas ---------- */
+.overlay{position:fixed;inset:0;background:rgba(20,18,30,.38);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto;animation:fade .12s}
+.modal{background:#fff;border-radius:14px;width:100%;box-shadow:0 30px 80px rgba(20,18,40,.25);display:flex;flex-direction:column;max-height:88vh}
+.modal-head{display:flex;justify-content:space-between;align-items:center;padding:20px 24px 10px}
+.modal-head h3{margin:0;font-size:17px;font-weight:500}
+.modal-body{padding:8px 24px 14px;overflow:auto}
+.modal-foot{display:flex;gap:10px;justify-content:flex-end;align-items:center;padding:14px 24px 20px;border-top:1px solid var(--line-2);flex-wrap:wrap}
+.modal-foot .left{margin-right:auto}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:14px}
+.f{display:flex;flex-direction:column;gap:6px;min-width:0}
+.f label,.f .lbl{font-size:12px;color:var(--muted);font-weight:400}
+.f input,.f select,.f textarea{height:36px;border:1px solid var(--line);border-radius:8px;padding:0 11px;font-size:13px;background:#fff;outline:none;width:100%}
+.f textarea{height:auto;min-height:84px;padding:10px 12px;resize:vertical}
+.hint{font-size:11px;color:var(--faint)}
+.f.full{grid-column:1/-1}
+.seg{display:inline-flex;background:#f1f1f5;border-radius:10px;padding:3px;gap:3px;align-self:flex-start}
+.seg label{padding:6px 12px;border-radius:7px;font-size:13px;color:var(--muted);cursor:pointer;font-weight:400}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.canal-fisica .so-ml{display:none}
+.modal:not(.canal-fisica) .so-fisica{display:none}
+.lines{border:1px solid var(--line);border-radius:12px;overflow:auto;margin-bottom:10px}
+.lines th{position:static}
+.lines td{padding:6px;border-bottom:1px solid var(--line-2)}
+.lines input{height:32px;font-size:12.5px;border:1px solid var(--line);border-radius:8px;padding:0 8px;width:100%;min-width:80px;outline:none}
+.lines .w-prod{min-width:280px}
+.info{background:#f7f5fd;border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#433a5e;line-height:1.5}
+.stat-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.stat{flex:1;min-width:120px;background:#f8f8fb;border-radius:12px;padding:10px 14px}
+.stat span{display:block;font-size:11px;color:var(--muted)}
+.stat b{font-size:15px;font-variant-numeric:tabular-nums;font-weight:500}
+.inline-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.inline-form input{height:32px;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:0 10px;outline:none;width:160px}
+.sub-title{font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:18px 0 10px}
+.cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px}
+.cfg-actions{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:14px 0 18px}
+
+#toast-root{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{background:#1d1b26;color:#fff;padding:9px 16px;border-radius:10px;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.2);animation:up .18s}
+.toast.erro{background:#b3202e}
+@keyframes fade{from{opacity:0}}
+@keyframes up{from{opacity:0;transform:translateY(8px)}}
+
+@media (max-width:1200px){
+  .grid-home,.grid-side{grid-template-columns:1fr}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .kpi:nth-child(3){border-left:0}
+  .kpi:nth-child(n+3){border-top:1px solid var(--line-2)}
+}
+@media (max-width:960px){
+  .menu-toggle{display:grid}
+  .logo{width:auto;font-size:20px}
+  .save-status{display:none}
+  .sidebar{position:fixed;left:0;top:60px;z-index:40;transform:translateX(-100%);transition:transform .2s;box-shadow:0 20px 50px rgba(0,0,0,.15)}
+  body.menu-aberto .sidebar{transform:none}
+  .main{padding:28px 16px 60px}
+  .topbar{padding:0 16px;gap:12px}
+  .table-wrap{max-height:none}
+}
+@media (max-width:640px){
+  .search{display:none}
+  .top-actions .btn{display:none}
+  .bar-row{grid-template-columns:minmax(0,130px) 1fr 36px;gap:10px}
+  h1{font-size:21px}
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <button class="icon-btn menu-toggle" data-action="toggleMenu" aria-label="Abrir menu"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+  <button class="logo" data-action="go" data-view="inicio" aria-label="Início">bela&nbsp;ordem<svg width="30" height="26" viewBox="0 0 30 26" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l9 9-9 9M15 4l9 9-9 9"/></svg></button>
+  <div class="search">
+    <svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="busca-global" type="search" placeholder="Buscar produtos, NF, clientes..." autocomplete="off" aria-label="Busca geral">
+    <kbd>/</kbd>
+    <div class="search-results" id="busca-res" hidden></div>
+  </div>
+  <div class="top-actions">
+    <span class="save-status" id="save-status">Salvo neste navegador</span>
+    <button class="btn btn-sm btn-soft" data-action="exportar">Baixar backup</button>
+    <button class="icon-btn" data-action="go" data-view="config" aria-label="Dados e backup"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </div>
+</header>
+<div class="layout">
+  <div class="sidebar-espaco" id="sidebarEspaco"></div>
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main" id="main"></main>
+</div>
+<div id="modal-root"></div>
+<div id="toast-root" aria-live="polite"></div>
+<input type="file" id="arquivo-import" accept="application/json,.json" hidden>
+
+<script src="dados-iniciais.js"></script>
+<script>
+'use strict';
+
+/* =========================================================
+   Utilidades
+   ========================================================= */
+const LS_KEY = 'belaordem.dados.v1';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ACENTOS = new RegExp('[' + String.fromCharCode(0x300) + '-' + String.fromCharCode(0x36f) + ']', 'g');
+const norm = s => String(s ?? '').normalize('NFD').replace(ACENTOS, '').toLowerCase();
+let _seq = 0;
+const uid = () => Date.now().toString(36) + (_seq++).toString(36) + Math.random().toString(36).slice(2, 6);
+const num = x => (x === '' || x == null) ? null : Number(x);
+function parseNum(s) {
+  if (s == null) return null;
+  s = String(s).trim().replace(/^R\$\s*/, '');
+  if (s === '') return null;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  const n = Number(s);
+  return isFinite(n) ? n : NaN;
+}
+const fmtIn = n => n == null || !isFinite(n) ? '' : String(Math.round(n * 10000) / 10000).replace('.', ',');
+const brl = n => (n == null || !isFinite(n)) ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const pct = n => (n == null || !isFinite(n)) ? '—' : (n * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+const fdata = iso => iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—';
+const pad2 = n => String(n).padStart(2, '0');
+const isoDe = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const hojeISO = () => isoDe(new Date());
+function addDias(iso, n) { const [y, m, d] = iso.split('-').map(Number); return isoDe(new Date(y, m - 1, d + n)); }
+const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+const DIAS = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+const nomeMes = k => k ? `${MESES[+k.slice(5, 7) - 1]} ${k.slice(0, 4)}` : '';
+const sum = (arr, f) => arr.reduce((s, x) => s + (Number(f(x)) || 0), 0);
+const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+
+const ICON = {
+  home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
+  box: '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
+  layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
+  truck: '<path d="M3 6h11v10H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>',
+  cart: '<circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h9.2a1 1 0 0 0 1-.8L21 8H6.2"/>',
+  store: '<path d="M4 9h16l-1.2-5H5.2zM5 9v11h14V9M9.5 20v-6h5v6"/>',
+  clipboard: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9zM9 11h6M9 15h4"/>',
+  trend: '<path d="m3 17 6-6 4 4 8-8M15 7h6v6"/>',
+  receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+  database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+  calendar: '<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="#fbd46d" stroke="#1d1d1d"/>',
+  chevron: '<path d="m9 6 6 6-6 6"/>',
+  chevronDown: '<path d="m6 9 6 6 6-6"/>',
+};
+const ic = (n, s = 20) => `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n] || ''}</svg>`;
+
+/* =========================================================
+   Cores das etiquetas (mesmas do Notion)
+   ========================================================= */
+const CORES = {
+  fornecedor: { 'KFG': 'green', 'Bonificação': 'default', 'Macropytus': 'orange', 'Planeta Saúde': 'brown', 'Riomed': 'pink' },
+  fabricante: { 'Melfort': 'brown', 'Katiguá': 'orange', 'Maxinutri': 'green', 'ADA': 'red', 'Vitafor': 'yellow', 'Probiótica': 'blue', 'Max Titanium': 'gray', 'Laboratório Saúde': 'green', 'Missner': 'pink', 'Canone': 'purple', 'Natulab': 'green', 'Nutrata': 'green', 'Medinal': 'green', 'Ecofitus': 'yellow', 'Macrophytus': 'green', 'Apis Flora': 'blue', 'Prati': 'gray', 'True Source': 'yellow', 'Dux Nutrition': 'orange', 'Muwiz': 'red', 'Integralmedica': 'blue', 'Squadz': 'pink', 'Hinode': 'default', 'Yosen': 'blue', 'Lokenzzi': 'pink', 'Espírito Cacau': 'yellow', 'Evergreen': 'green' },
+  tipo: { 'Proteína': 'red', 'Creatina': 'yellow', 'Vitaminas': 'blue', 'Curativo': 'orange', 'Fitoterápico': 'gray', 'Kit': 'pink', 'Barra de Proteína': 'default', 'Pré Treino': 'purple', 'Chocolate': 'brown', 'Enzima': 'green', 'Perfumaria': 'brown' },
+  encomenda: { 'Pendente': 'yellow', 'Pedido ao fornecedor': 'blue', 'Chegou': 'purple', 'Entregue': 'green', 'Cancelada': 'gray' },
+  pgto: { 'Pago': 'green', 'Parcial': 'yellow', 'Pendente': 'red' },
+};
+const PALETA = ['green', 'orange', 'brown', 'pink', 'red', 'yellow', 'blue', 'gray', 'purple'];
+function cor(tipo, nome) {
+  const m = CORES[tipo];
+  if (m && m[nome]) return m[nome];
+  let h = 0;
+  for (const c of String(nome)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return PALETA[h % PALETA.length];
+}
+const chip = (tipo, nome) => nome ? `<span class="chip c-${cor(tipo, nome)}">${esc(nome)}</span>` : '<span class="faint">—</span>';
+const STATUS_ENC = ['Pendente', 'Pedido ao fornecedor', 'Chegou', 'Entregue', 'Cancelada'];
+
+/* =========================================================
+   Dados
+   ========================================================= */
+function configPadrao() {
+  return {
+    taxaPadrao: 0.12,
+    fornecedores: Object.keys(CORES.fornecedor),
+    fabricantes: Object.keys(CORES.fabricante),
+    tipos: Object.keys(CORES.tipo),
+  };
+}
+function dadosVazios() {
+  return { versao: 1, produtos: [], estoque: [], vendasFisicas: [], despesas: [], encomendas: [], config: configPadrao() };
+}
+function dadosDoNotion() {
+  const S = window.DADOS_NOTION;
+  const db = dadosVazios();
+  if (!S) return db;
+  const linhas = t => String(t || '').split(/[~\n]/).map(l => l.trim()).filter(Boolean);
+  for (const l of linhas(S.produtos)) {
+    const [id, sku, nome, fab, tipo, ncm, ean] = l.split('|');
+    let tipos = [];
+    try { tipos = JSON.parse(tipo || '[]'); } catch (e) { tipos = []; }
+    db.produtos.push({ id: id.slice(-12), sku: num(sku), nome, fabricante: fab || null, tipos, ncm: ncm || '', ean: ean || '' });
+  }
+  for (const l of linhas(S.vendasFisicas)) {
+    const [id, pessoa, pago, data] = l.split('|');
+    db.vendasFisicas.push({ id, pessoa, pago: num(pago) || 0, data: data || null });
+  }
+  for (const bloco of [S.estoqueInicial, S.estoque]) {
+    for (const l of linhas(bloco)) {
+      const [q, p, c, v, t, f, st, u, dv, val, fo, nf, vf, dc] = l.split('|');
+      for (let i = 0; i < Number(q); i++) {
+        db.estoque.push({
+          id: uid(), produto: p, custo: num(c), venda: num(v), taxa: num(t), frete: num(f),
+          status: st === 'V' ? 'vendido' : 'avenda', unid: num(u) ?? (st === 'V' ? 0 : 1),
+          dVenda: dv || null, validade: val || null, fornecedor: fo || null, nf: nf || null,
+          vendaFisica: vf || null, dCompra: dc || null,
+        });
+      }
+    }
+  }
+  return db;
+}
+
+let DB;
+let armazenamentoOk = true;
+function carregar() {
+  try {
+    const s = localStorage.getItem(LS_KEY);
+    if (s) {
+      DB = JSON.parse(s);
+      const base = dadosVazios();
+      for (const k of Object.keys(base)) if (DB[k] == null) DB[k] = base[k];
+      DB.config = { ...configPadrao(), ...DB.config };
+      return;
+    }
+  } catch (e) { armazenamentoOk = false; }
+  DB = dadosDoNotion();
+  salvar();
+}
+function salvar() {
+  const el = $('#save-status');
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(DB));
+    armazenamentoOk = true;
+    el.className = 'save-status';
+    el.textContent = 'Salvo neste navegador';
+  } catch (e) {
+    armazenamentoOk = false;
+    el.className = 'save-status erro';
+    el.textContent = 'Não foi possível salvar — baixe um backup';
+  }
+}
+function commit(msg) { salvar(); render(); if (msg) toast(msg); }
+
+/* ---------- cálculos (as fórmulas do Notion) ---------- */
+function lucro(i) {
+  if (i.venda == null && i.custo == null) return null;
+  const v = i.venda || 0;
+  return v - v * (i.taxa || 0) - (i.frete || 0) - (i.custo || 0);
+}
+function margem(i) { const l = lucro(i); return i.venda ? l / i.venda : null; }
+function statusPgto(pago, venda) {
+  const pend = (venda || 0) - (pago || 0);
+  if (pend <= 0.005) return 'Pago';
+  return (pago || 0) > 0 ? 'Parcial' : 'Pendente';
+}
+const mapaProdutos = () => Object.fromEntries(DB.produtos.map(p => [p.id, p]));
+const mapaVF = () => Object.fromEntries(DB.vendasFisicas.map(v => [v.id, v]));
+function statsProdutos() {
+  const m = {};
+  for (const p of DB.produtos) m[p.id] = { disp: 0, vend: 0, n: 0, sc: 0, cc: 0, sv: 0, cv: 0, sm: 0, cm: 0 };
+  for (const i of DB.estoque) {
+    const s = m[i.produto];
+    if (!s) continue;
+    s.n++;
+    s.disp += i.unid || 0;
+    if (i.status === 'vendido') s.vend++;
+    if (i.custo != null) { s.sc += i.custo; s.cc++; }
+    if (i.venda != null) {
+      s.sv += i.venda; s.cv++;
+      const mg = margem(i);
+      if (mg != null && isFinite(mg)) { s.sm += mg; s.cm++; }
+    }
+  }
+  return m;
+}
+function statsVF() {
+  const m = {};
+  for (const v of DB.vendasFisicas) m[v.id] = { venda: 0, custo: 0, itens: 0 };
+  for (const i of DB.estoque) {
+    const s = i.vendaFisica && m[i.vendaFisica];
+    if (!s) continue;
+    s.venda += i.venda || 0; s.custo += i.custo || 0; s.itens++;
+  }
+  return m;
+}
+function unidadesDisponiveis(produtoId) {
+  return DB.estoque
+    .filter(i => i.produto === produtoId && i.status === 'avenda')
+    .sort((a, b) => (a.validade || '9999').localeCompare(b.validade || '9999') || (a.dCompra || '').localeCompare(b.dCompra || ''));
+}
+function venderUnidades(us, { venda, taxa, frete, data, vendaFisica }) {
+  for (const u of us) {
+    u.status = 'vendido'; u.unid = 0; u.dVenda = data;
+    if (venda != null) u.venda = venda;
+    if (vendaFisica) { u.vendaFisica = vendaFisica; u.taxa = 0; u.frete = 0; }
+    else { if (taxa != null) u.taxa = taxa; if (frete != null) u.frete = frete; }
+  }
+}
+function devolverUnidades(us) {
+  for (const u of us) { u.status = 'avenda'; u.unid = 1; u.dVenda = null; u.vendaFisica = null; }
+}
+function obterVendaFisica(nome, data) {
+  const n = norm(nome);
+  const existente = DB.vendasFisicas.filter(v => norm(v.pessoa) === n).sort((a, b) => (b.data || '').localeCompare(a.data || ''))[0];
+  if (existente) return existente.id;
+  const v = { id: uid(), pessoa: nome, pago: 0, data };
+  DB.vendasFisicas.push(v);
+  return v.id;
+}
+const labelProduto = p => `${p.sku != null ? p.sku + ' · ' : ''}${p.nome}${p.fabricante ? ' — ' + p.fabricante : ''}`;
+function produtoPorLabel(txt) {
+  txt = String(txt || '').trim();
+  if (!txt) return null;
+  const exato = DB.produtos.find(p => labelProduto(p) === txt);
+  if (exato) return exato;
+  const n = norm(txt);
+  const c = DB.produtos.filter(p => norm(p.nome) === n || String(p.sku) === txt);
+  return c.length === 1 ? c[0] : null;
+}
+function datalistProdutos(id, soDisponiveis) {
+  const st = statsProdutos();
+  const ps = DB.produtos.filter(p => !soDisponiveis || st[p.id].disp > 0).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  return `<datalist id="${id}">${ps.map(p => `<option value="${esc(labelProduto(p))}">${st[p.id].disp} à venda</option>`).join('')}</datalist>`;
+}
+function adicionarNaLista(lista, valor) {
+  if (valor && !DB.config[lista].some(x => norm(x) === norm(valor))) DB.config[lista].push(valor);
+}
+
+/* =========================================================
+   Estado da tela
+   ========================================================= */
+const LIM = { estoque: 100, produtos: 150, compras: 60, vendas: 150 };
+const UI = {
+  view: 'inicio',
+  estoque: { tab: 'avenda', q: '', fornecedor: '', mes: '', agrupar: true, limite: LIM.estoque },
+  produtos: { tab: 'tabela', q: '', filtro: 'todos', ordem: 'sku', dir: 'asc', limite: LIM.produtos },
+  compras: { q: '', abertas: {}, limite: LIM.compras },
+  vendas: { tab: 'lista', periodo: hojeISO().slice(0, 7), canal: 'todos', q: '', agrupar: true, limite: LIM.vendas },
+  fisicas: { tab: 'pendentes', q: '' },
+  encomendas: { tab: 'abertas', q: '' },
+  dre: { ano: hojeISO().slice(0, 4) },
+  despesas: { periodo: hojeISO().slice(0, 7) },
+};
+let LOTES = [];
+function setPath(obj, path, val) {
+  const ks = path.split('.');
+  let o = obj;
+  for (let i = 0; i < ks.length - 1; i++) o = o[ks[i]];
+  o[ks[ks.length - 1]] = val;
+}
+function resetLimite() { const v = UI.view; if (LIM[v]) UI[v].limite = LIM[v]; }
+
+/* =========================================================
+   Componentes
+   ========================================================= */
+function pageHead(titulo, sub, botoes = '') {
+  return `<div class="page-head"><div><h1>${titulo}</h1>${sub ? `<p class="sub">${sub}</p>` : ''}</div><div class="head-actions">${botoes}</div></div>`;
+}
+function tabs(path, atual, lista) {
+  return `<div class="tabs" role="tablist">${lista.map(([k, l, n]) => `<button class="tab ${k === atual ? 'on' : ''}" role="tab" aria-selected="${k === atual}" data-action="set" data-path="${path}" data-value="${k}">${esc(l)}${n != null ? `<span class="tab-n">${n}</span>` : ''}</button>`).join('')}</div>`;
+}
+function campoBusca(id, path, valor, placeholder) {
+  return `<div class="field-search">${ic('search', 18)}<input id="${id}" type="search" data-bind="${path}" value="${esc(valor)}" placeholder="${esc(placeholder)}" autocomplete="off"></div>`;
+}
+function select(path, valor, opcoes, rotulo) {
+  return `<select class="sel" data-bind="${path}" aria-label="${esc(rotulo)}">${opcoes.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(valor) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+}
+function botaoMais(total, path, limite) {
+  return total > limite ? `<div class="more"><button class="btn btn-sm btn-soft" data-action="mais" data-path="${path}">Mostrar mais (${total - limite} restantes)</button></div>` : '';
+}
+function chipValidade(v) {
+  if (!v) return '<span class="faint">—</span>';
+  const h = hojeISO();
+  const cls = v < h ? 'c-red' : v <= addDias(h, 90) ? 'c-yellow' : 'c-plain';
+  return `<span class="chip ${cls}">${fdata(v)}</span>`;
+}
+const chipStatus = s => s === 'vendido' ? '<span class="chip c-green">Vendido</span>' : '<span class="chip c-default">À venda</span>';
+function celulaProduto(i, P) {
+  const p = P[i.produto];
+  return `<td class="prod"><div class="pn">${esc(p ? p.nome : '(produto removido)')}</div><div class="pm">${esc(p?.fabricante || '')}</div></td>`;
+}
+const tdLucro = i => { const l = lucro(i); return `<td class="num ${l != null && l < 0 ? 'neg' : ''}">${brl(l)}</td>`; };
+function chaveLote(i) {
+  return [i.produto, i.custo, i.venda, i.taxa, i.frete, i.status, i.dVenda, i.validade, i.lote, i.fornecedor, i.nf, i.dCompra, i.vendaFisica].join('|');
+}
+function agrupar(itens, ativo) {
+  if (!ativo) return itens.map(i => ({ ids: [i.id], it: i }));
+  const m = new Map();
+  for (const i of itens) {
+    const k = chaveLote(i);
+    let g = m.get(k);
+    if (!g) { g = { ids: [], it: i }; m.set(k, g); }
+    g.ids.push(i.id);
+  }
+  return [...m.values()];
+}
+const vazioLinha = (cols, msg = 'Nenhum item encontrado.') => `<tr><td class="empty-cell" colspan="${cols}">${msg}</td></tr>`;
+
+/* =========================================================
+   Menu
+   ========================================================= */
+const NAV = [
+  { sec: 'Gestão', itens: [['inicio', 'Início', 'home'], ['produtos', 'Produtos', 'box'], ['estoque', 'Estoque', 'layers'], ['compras', 'Compras', 'truck']] },
+  { sec: 'Vendas', itens: [['vendas', 'Vendas', 'cart'], ['fisicas', 'Vendas Físicas', 'store'], ['encomendas', 'Encomendas', 'clipboard']] },
+  { sec: 'Financeiro', itens: [['dre', 'DRE', 'trend'], ['despesas', 'Despesas', 'receipt']] },
+];
+function renderNav() {
+  const sv = statsVF();
+  const badges = {
+    fisicas: DB.vendasFisicas.filter(v => statusPgto(v.pago, sv[v.id].venda) !== 'Pago').length,
+    encomendas: DB.encomendas.filter(e => !['Entregue', 'Cancelada'].includes(e.status)).length,
+  };
+  const fixada = $('#sidebar').classList.contains('fixada');
+  $('#sidebar').innerHTML = `<div class="pin-row"><button class="btn-pin ${fixada ? 'fixada' : ''}" data-action="pinMenu" type="button" aria-label="Fixar menu aberto" aria-pressed="${fixada}" title="${fixada ? 'Desafixar menu' : 'Fixar menu aberto'}"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v3.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg></button></div>
+  <nav class="nav" aria-label="Menu principal">${NAV.map(s => `<div class="nav-sec">${s.sec}</div>${s.itens.map(([k, l, i]) => `<button class="nav-item ${UI.view === k ? 'on' : ''}" data-action="go" data-view="${k}" ${UI.view === k ? 'aria-current="page"' : ''}>${ic(i)}<span>${l}</span>${badges[k] != null ? `<span class="badge">${badges[k]}</span>` : ''}</button>`).join('')}`).join('')}</nav>
+  <div class="nav-foot"><button class="nav-item ${UI.view === 'config' ? 'on' : ''}" data-action="go" data-view="config">${ic('database')}<span>Dados e backup</span></button></div>`;
+}
+
+/* =========================================================
+   Início
+   ========================================================= */
+function vInicio() {
+  const h = hojeISO(), mes = h.slice(0, 7), agora = new Date(), hr = agora.getHours();
+  const saud = hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite';
+  const P = mapaProdutos();
+  const vend = DB.estoque.filter(i => i.status === 'vendido' && i.dVenda);
+  const doMes = vend.filter(i => i.dVenda.startsWith(mes));
+  const fat = sum(doMes, i => i.venda), luc = sum(doMes, lucro);
+  const desp = sum(DB.despesas.filter(x => (x.data || '').startsWith(mes)), x => x.valor);
+  const hojeN = vend.filter(i => i.dVenda === h).length;
+  const iniSem = addDias(h, -((agora.getDay() + 6) % 7));
+  const semN = vend.filter(i => i.dVenda >= iniSem && i.dVenda <= h).length;
+  const sv = statsVF();
+  const pend = DB.vendasFisicas.filter(v => statusPgto(v.pago, sv[v.id].venda) !== 'Pago');
+  const pendValor = sum(pend, v => sv[v.id].venda - (v.pago || 0));
+
+  const cont = {};
+  doMes.forEach(i => { cont[i.produto] = (cont[i.produto] || 0) + 1; });
+  const top = Object.entries(cont).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const max = top.length ? top[0][1] : 1;
+  const CORES_BARRA = ['#6e56cf', '#9b3fc9', '#f08a24', '#14958a', '#2563c9', '#d8323f'];
+
+  const aVenda = DB.estoque.filter(i => i.status === 'avenda');
+  const limV = addDias(h, 120);
+  const venc = {};
+  aVenda.forEach(i => {
+    if (i.validade && i.validade <= limV) {
+      const k = i.produto + '|' + i.validade;
+      venc[k] = venc[k] || { p: i.produto, v: i.validade, n: 0 };
+      venc[k].n++;
+    }
+  });
+  const vencL = Object.values(venc).sort((a, b) => a.v.localeCompare(b.v)).slice(0, 6);
+  const st = statsProdutos();
+  const d30 = addDias(h, -30);
+  const v30 = {};
+  vend.forEach(i => { if (i.dVenda >= d30) v30[i.produto] = (v30[i.produto] || 0) + 1; });
+  const repor = Object.entries(v30).filter(([id]) => st[id] && st[id].disp <= 3).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const encAb = DB.encomendas.filter(e => !['Entregue', 'Cancelada'].includes(e.status));
+
+  const dataLonga = `${DIAS[agora.getDay()]}, ${agora.getDate()} De ${MESES[agora.getMonth()]} De ${agora.getFullYear()}`;
+  return `<div class="page">
+  ${pageHead(`${saud} 👋`, dataLonga, `<button class="btn" data-action="novaCompra">Registrar compra</button><button class="btn btn-dark" data-action="novaVenda">${ic('plus', 18)} Nova venda</button>`)}
+  <div class="grid-home">
+    <div>
+      <section class="block">
+        <div class="sec-head"><h2>Resumo de ${MESES[agora.getMonth()]}</h2><button class="btn-link" data-action="go" data-view="vendas">Ver vendas →</button></div>
+        <div class="card"><div class="kpis">
+          <div class="kpi"><div class="kpi-l">Faturamento</div><div class="kpi-v">${brl(fat)}</div><div class="kpi-s">${plural(doMes.length, 'unidade vendida', 'unidades vendidas')}</div></div>
+          <div class="kpi"><div class="kpi-l">Lucro bruto</div><div class="kpi-v">${brl(luc)}</div><div class="kpi-s">margem ${pct(fat ? luc / fat : null)}</div></div>
+          <div class="kpi"><div class="kpi-l">Despesas</div><div class="kpi-v">${brl(desp)}</div><div class="kpi-s">lançadas no mês</div></div>
+          <div class="kpi"><div class="kpi-l">Lucro líquido</div><div class="kpi-v ${luc - desp < 0 ? 'neg' : ''}">${brl(luc - desp)}</div><div class="kpi-s">bruto − despesas</div></div>
+        </div></div>
+      </section>
+      <section class="block">
+        <div class="sec-head"><h2>Mais vendidos no mês</h2><button class="btn-link" data-action="go" data-view="produtos">Ver produtos →</button></div>
+        <div class="card">${top.length ? `<div class="bars">${top.map(([id, n], k) => `<div class="bar-row"><div class="bar-name"><span class="dot" style="background:${CORES_BARRA[k]}"></span><span title="${esc(P[id]?.nome)}">${esc(P[id]?.nome || '—')}</span></div><div class="track"><div class="fill" style="width:${Math.max(3, n / max * 100)}%;background:${CORES_BARRA[k]}"></div></div><div class="bar-n">${n}</div></div>`).join('')}</div>`
+          : `<div class="empty-box">${ic('folder', 44)}<div>Nenhuma venda registrada este mês</div><p><button class="btn btn-sm" data-action="novaVenda">+ Nova venda</button></p></div>`}</div>
+      </section>
+      <section class="block">
+        <div class="sec-head"><h2>Estoque à venda</h2><button class="btn-link" data-action="go" data-view="estoque">Ver estoque →</button></div>
+        <div class="card"><div class="kpis">
+          <div class="kpi"><div class="kpi-l">Unidades</div><div class="kpi-v">${aVenda.length.toLocaleString('pt-BR')}</div><div class="kpi-s">${plural(Object.values(st).filter(s => s.disp > 0).length, 'produto', 'produtos')}</div></div>
+          <div class="kpi"><div class="kpi-l">Valor em custo</div><div class="kpi-v">${brl(sum(aVenda, i => i.custo))}</div></div>
+          <div class="kpi"><div class="kpi-l">Valor de venda</div><div class="kpi-v">${brl(sum(aVenda, i => i.venda))}</div></div>
+          <div class="kpi"><div class="kpi-l">Lucro previsto</div><div class="kpi-v">${brl(sum(aVenda, lucro))}</div></div>
+        </div></div>
+      </section>
+    </div>
+    <div class="stack">
+      <div class="card date-card">
+        <div class="date-top"><div><div class="date-n">${agora.getDate()}</div><div class="date-m">${MESES[agora.getMonth()]} De ${agora.getFullYear()}</div><div class="date-w">${DIAS[agora.getDay()]}</div></div><div class="tile">${ic('calendar', 22)}</div></div>
+        <div class="pills">
+          <button class="pill y" data-action="go" data-view="vendas"><span class="dot"></span>Vendas hoje<b>${hojeN}</b></button>
+          <button class="pill g" data-action="go" data-view="vendas"><span class="dot"></span>Esta semana<b>${semN}</b></button>
+          <button class="pill r" data-action="go" data-view="fisicas"><span class="dot"></span>Pagamentos pendentes${pendValor > 0 ? ` · ${brl(pendValor)}` : ''}<b>${pend.length}</b></button>
+        </div>
+      </div>
+      <div class="card side-card">
+        <div class="side-head"><h2>Validade próxima</h2><button class="btn-link" data-action="go" data-view="estoque">Ver estoque →</button></div>
+        ${vencL.length ? `<ul class="mini-list">${vencL.map(x => `<li><span class="ml-name" title="${esc(P[x.p]?.nome)}">${esc(P[x.p]?.nome || '—')} <span class="faint">· ${x.n} un.</span></span>${chipValidade(x.v)}</li>`).join('')}</ul>` : '<p class="empty-note">Nada vencendo nos próximos 4 meses</p>'}
+      </div>
+      <div class="card side-card">
+        <div class="side-head"><h2>Repor estoque</h2></div>
+        ${repor.length ? `<ul class="mini-list">${repor.map(([id, n]) => `<li><span class="ml-name">${esc(P[id]?.nome || '—')}</span><span class="faint" style="white-space:nowrap">${n} vend. 30d · <b style="color:${st[id].disp ? 'var(--text)' : 'var(--red)'}">${st[id].disp} disp.</b></span></li>`).join('')}</ul>` : '<p class="empty-note">Nenhum produto com estoque baixo</p>'}
+      </div>
+      <div class="card side-card">
+        <div class="side-head"><h2>Encomendas</h2><button class="btn-link" data-action="go" data-view="encomendas">Ver todas →</button></div>
+        ${encAb.length ? `<ul class="mini-list">${encAb.slice(0, 5).map(e => `<li><span class="ml-name">${esc(e.cliente)} <span class="faint">· ${esc(e.produto)}</span></span>${chip('encomenda', e.status)}</li>`).join('')}</ul>` : '<p class="empty-note">Nenhuma encomenda em aberto</p>'}
+      </div>
+    </div>
+  </div></div>`;
+}
+
+/* =========================================================
+   Produtos
+   ========================================================= */
+function vProdutos() {
+  const U = UI.produtos, st = statsProdutos(), q = norm(U.q);
+  let ps = DB.produtos.slice();
+  if (q) ps = ps.filter(p => norm([p.nome, p.sku, p.fabricante, p.ean, p.ncm, (p.tipos || []).join(' ')].join(' ')).includes(q));
+  if (U.filtro === 'com') ps = ps.filter(p => st[p.id].disp > 0);
+  if (U.filtro === 'sem') ps = ps.filter(p => st[p.id].disp <= 0);
+  const val = {
+    sku: p => p.sku ?? null, nome: p => p.nome, fab: p => p.fabricante || null, cat: p => (p.tipos || []).join(', ') || null,
+    disp: p => st[p.id].disp, vend: p => st[p.id].vend,
+    custo: p => st[p.id].cc ? st[p.id].sc / st[p.id].cc : null, venda: p => st[p.id].cv ? st[p.id].sv / st[p.id].cv : null,
+    margem: p => st[p.id].cm ? st[p.id].sm / st[p.id].cm : null, ncm: p => p.ncm || null, ean: p => p.ean || null,
+  };
+  const get = val[U.ordem] || val.sku, sinal = U.dir === 'desc' ? -1 : 1;
+  ps.sort((a, b) => {
+    const x = get(a), y = get(b);
+    if (x == null || y == null) return x == null && y == null ? 0 : x == null ? 1 : -1; // vazios sempre no fim
+    return sinal * (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'pt-BR', { numeric: true }));
+  });
+  const toolbar = `<div class="toolbar">${campoBusca('prod-q', 'produtos.q', U.q, 'Buscar nome, SKU, EAN, fabricante...')}
+    ${select('produtos.filtro', U.filtro, [['todos', 'Todos os produtos'], ['com', 'Com estoque'], ['sem', 'Sem estoque']], 'Filtro de estoque')}</div>`;
+  const th = (col, rotulo, num, titulo) => `<th class="${num ? 'num' : ''}" aria-sort="${U.ordem === col ? (U.dir === 'desc' ? 'descending' : 'ascending') : 'none'}"><button class="th-btn ${U.ordem === col ? 'on' : ''}" data-action="ordenar" data-col="${col}" title="${titulo || 'Ordenar por ' + rotulo}">${rotulo}<span class="seta">${U.ordem === col ? (U.dir === 'desc' ? '↓' : '↑') : ''}</span></button></th>`;
+  let corpo;
+  if (U.tab === 'tabela') {
+    const vis = ps.slice(0, U.limite);
+    corpo = `<div class="table-wrap"><table class="tb-prod"><thead><tr>${th('sku', 'SKU', true)}${th('nome', 'Nome')}${th('fab', 'Fabricante')}${th('cat', 'Categoria')}${th('disp', 'Disp.', true, 'Disponível: ordenar por estoque disponível')}${th('vend', 'Vend.', true, 'Vendidos: ordenar por unidades vendidas')}${th('custo', 'Custo', true, 'Custo médio')}${th('venda', 'Venda', true, 'Valor de venda médio')}${th('margem', 'Margem', true, 'Margem média')}${th('ncm', 'NCM')}${th('ean', 'EAN')}<th></th></tr></thead><tbody>
+    ${vis.length ? vis.map(p => {
+      const s = st[p.id];
+      return `<tr><td class="num muted">${p.sku ?? '—'}</td><td class="prod"><div class="pn">${esc(p.nome)}</div></td><td>${chip('fabricante', p.fabricante)}</td><td><div class="chips">${(p.tipos || []).map(t => chip('tipo', t)).join('')}</div></td>
+      <td class="num"><b style="color:${s.disp ? 'var(--text)' : 'var(--faint)'}">${s.disp}</b></td><td class="num">${s.vend}</td><td class="num">${brl(s.cc ? s.sc / s.cc : null)}</td><td class="num">${brl(s.cv ? s.sv / s.cv : null)}</td><td class="num">${pct(s.cm ? s.sm / s.cm : null)}</td>
+      <td class="muted">${esc(p.ncm || '—')}</td><td class="muted">${esc(p.ean || '—')}</td>
+      <td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="compraProduto" data-id="${p.id}">Compra</button>${s.disp ? `<button class="btn btn-sm btn-dark" data-action="venderProduto" data-id="${p.id}">Vender</button>` : ''}<button class="ghost-ic" data-action="editarProduto" data-id="${p.id}" aria-label="Editar produto">${ic('edit', 16)}</button></div></td></tr>`;
+    }).join('') : vazioLinha(12)}
+    </tbody></table></div>${botaoMais(ps.length, 'produtos.limite', U.limite)}`;
+  } else {
+    const cols = [...DB.config.tipos, '(Sem categoria)'];
+    corpo = `<div class="board">${cols.map(t => {
+      const itens = ps.filter(p => t === '(Sem categoria)' ? !(p.tipos || []).length : (p.tipos || []).includes(t)).sort((a, b) => (a.sku ?? 1e9) - (b.sku ?? 1e9));
+      return `<div class="col"><div class="col-h">${t === '(Sem categoria)' ? '<span class="muted">Sem categoria</span>' : chip('tipo', t)}<span class="faint">${itens.length}</span></div>
+      ${itens.map(p => `<button class="bcard" data-action="editarProduto" data-id="${p.id}"><div class="bt">${esc(p.nome)}</div><div class="bm">${chip('fabricante', p.fabricante)}<span>${st[p.id].disp} disp.</span></div></button>`).join('') || '<p class="empty-note" style="padding:0 6px">Vazio</p>'}</div>`;
+    }).join('')}</div>`;
+  }
+  return `<div class="page">${pageHead('Produtos', `${DB.produtos.length} produtos cadastrados`, `<button class="btn" data-action="novaCompra">Registrar compra</button><button class="btn btn-dark" data-action="novoProduto">${ic('plus', 18)} Novo produto</button>`)}
+  ${tabs('produtos.tab', U.tab, [['tabela', 'Tabela'], ['categoria', 'Por categoria']])}${toolbar}${corpo}</div>`;
+}
+
+/* =========================================================
+   Estoque (Movimentação de Estoque)
+   ========================================================= */
+function vEstoque() {
+  const U = UI.estoque, P = mapaProdutos(), VF = mapaVF();
+  const nA = DB.estoque.filter(i => i.status === 'avenda').length;
+  let itens = DB.estoque.filter(i => U.tab === 'geral' || i.status === U.tab);
+  if (U.fornecedor) itens = itens.filter(i => (i.fornecedor || '') === U.fornecedor);
+  if (U.tab === 'vendido' && U.mes) itens = itens.filter(i => (i.dVenda || '').startsWith(U.mes));
+  const q = norm(U.q);
+  if (q) itens = itens.filter(i => { const p = P[i.produto] || {}; return norm(`${p.nome} ${p.sku} ${p.fabricante} ${i.nf} ${i.lote || ''} ${i.fornecedor} ${VF[i.vendaFisica]?.pessoa || ''}`).includes(q); });
+  const sku = i => P[i.produto]?.sku ?? 1e9, nome = i => P[i.produto]?.nome || '';
+  if (U.tab === 'avenda') itens.sort((a, b) => sku(a) - sku(b) || (a.validade || '9').localeCompare(b.validade || '9'));
+  else if (U.tab === 'vendido') itens.sort((a, b) => (b.dVenda || '').localeCompare(a.dVenda || '') || sku(a) - sku(b));
+  else itens.sort((a, b) => nome(a).localeCompare(nome(b), 'pt-BR') || (b.dCompra || '').localeCompare(a.dCompra || ''));
+  const grupos = agrupar(itens, U.agrupar);
+  LOTES = grupos;
+  const vis = grupos.slice(0, U.limite);
+  const fornecedores = [...new Set(DB.estoque.map(i => i.fornecedor).filter(Boolean))].sort();
+  const meses = [...new Set(DB.estoque.filter(i => i.dVenda).map(i => i.dVenda.slice(0, 7)))].sort().reverse();
+  const vendidoTab = U.tab === 'vendido';
+
+  const cQtd = g => `<td><span class="qtd">${g.ids.length}</span></td>`;
+  const cSku = i => `<td class="num muted">${P[i.produto]?.sku ?? '—'}</td>`;
+  const cVals = i => `<td class="num">${brl(i.custo)}</td><td class="num">${brl(i.venda)}</td><td class="num">${pct(i.taxa)}</td><td class="num">${brl(i.frete)}</td>${tdLucro(i)}<td class="num">${pct(margem(i))}</td>`;
+  const bEdit = k => `<button class="ghost-ic" data-action="editarLote" data-lote="${k}" aria-label="Editar">${ic('edit', 16)}</button>`;
+  const canal = i => i.vendaFisica ? chip('pessoa', VF[i.vendaFisica]?.pessoa || 'Venda física') : '<span class="chip c-yellow">Mercado Livre</span>';
+  let thead, rows, cols;
+  if (U.tab === 'avenda') {
+    cols = 16;
+    thead = '<th>Qtd</th><th class="num">SKU</th><th>Produto</th><th class="num">Custo</th><th class="num">V. Venda</th><th class="num">Taxa ML</th><th class="num">Frete</th><th class="num">Lucro</th><th class="num">Margem</th><th>Validade</th><th>Lote</th><th>Categoria</th><th>Fornecedor</th><th>NF</th><th>Compra</th><th></th>';
+    rows = vis.map((g, k) => { const i = g.it; return `<tr>${cQtd(g)}${cSku(i)}${celulaProduto(i, P)}${cVals(i)}<td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td><div class="chips">${(P[i.produto]?.tipos || []).map(t => chip('tipo', t)).join('')}</div></td><td>${chip('fornecedor', i.fornecedor)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-dark" data-action="venderLote" data-lote="${k}">Vender</button>${bEdit(k)}</div></td></tr>`; });
+  } else if (vendidoTab) {
+    cols = 16;
+    thead = '<th>Qtd</th><th>D. Venda</th><th class="num">SKU</th><th>Produto</th><th class="num">Custo</th><th class="num">V. Venda</th><th class="num">Taxa ML</th><th class="num">Frete</th><th class="num">Lucro</th><th class="num">Margem</th><th>Canal</th><th>Fornecedor</th><th>NF</th><th>Lote</th><th>Compra</th><th></th>';
+    rows = vis.map((g, k) => { const i = g.it; return `<tr>${cQtd(g)}<td>${fdata(i.dVenda)}</td>${cSku(i)}${celulaProduto(i, P)}${cVals(i)}<td>${canal(i)}</td><td>${chip('fornecedor', i.fornecedor)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${esc(i.lote || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="devolverLote" data-lote="${k}">Devolução</button>${bEdit(k)}</div></td></tr>`; });
+  } else {
+    cols = 13;
+    thead = '<th>Qtd</th><th>Status</th><th class="num">SKU</th><th>Produto</th><th>Fornecedor</th><th class="num">Custo</th><th class="num">V. Venda</th><th>NF</th><th>Compra</th><th>Validade</th><th>Lote</th><th>D. Venda</th><th></th>';
+    rows = vis.map((g, k) => { const i = g.it; return `<tr>${cQtd(g)}<td>${chipStatus(i.status)}</td>${cSku(i)}${celulaProduto(i, P)}<td>${chip('fornecedor', i.fornecedor)}</td><td class="num">${brl(i.custo)}</td><td class="num">${brl(i.venda)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td class="muted">${fdata(i.dVenda)}</td><td><div class="row-actions">${bEdit(k)}</div></td></tr>`; });
+  }
+  return `<div class="page">${pageHead('Estoque', 'Movimentação de estoque: cada linha é uma unidade (ou um lote de unidades iguais)', `<button class="btn btn-dark" data-action="novaCompra">${ic('plus', 18)} Registrar compra</button>`)}
+  ${tabs('estoque.tab', U.tab, [['avenda', 'À venda', nA], ['vendido', 'Vendidos', DB.estoque.length - nA], ['geral', 'Geral', DB.estoque.length]])}
+  <div class="toolbar">${campoBusca('est-q', 'estoque.q', U.q, 'Buscar produto, SKU, NF, cliente...')}
+    ${select('estoque.fornecedor', U.fornecedor, [['', 'Todos os fornecedores'], ...fornecedores.map(f => [f, f])], 'Fornecedor')}
+    ${vendidoTab ? select('estoque.mes', U.mes, [['', 'Todos os meses'], ...meses.map(m => [m, nomeMes(m)])], 'Mês da venda') : ''}
+    <label class="check"><input type="checkbox" data-bind="estoque.agrupar" ${U.agrupar ? 'checked' : ''}> Agrupar unidades iguais</label></div>
+  <div class="summary"><span><b>${itens.length.toLocaleString('pt-BR')}</b> unidades</span><span>Custo <b>${brl(sum(itens, i => i.custo))}</b></span><span>${vendidoTab ? 'Faturamento' : 'Valor de venda'} <b>${brl(sum(itens, i => i.venda))}</b></span><span>${vendidoTab ? 'Lucro' : 'Lucro previsto'} <b>${brl(sum(itens, lucro))}</b></span></div>
+  <div class="table-wrap"><table><thead><tr>${thead}</tr></thead><tbody>${rows.join('') || vazioLinha(cols)}</tbody></table></div>
+  ${botaoMais(grupos.length, 'estoque.limite', U.limite)}</div>`;
+}
+
+/* =========================================================
+   Compras
+   ========================================================= */
+const chaveCompra = i => `${i.nf || ''}¦${i.fornecedor || ''}`;
+function comprasAgrupadas() {
+  const m = new Map();
+  for (const i of DB.estoque) {
+    const k = chaveCompra(i);
+    let g = m.get(k);
+    if (!g) { g = { chave: k, nf: i.nf, fornecedor: i.fornecedor, itens: [], datas: new Set() }; m.set(k, g); }
+    g.itens.push(i);
+    if (i.dCompra) g.datas.add(i.dCompra);
+  }
+  const lista = [...m.values()];
+  for (const g of lista) {
+    const ds = [...g.datas].sort();
+    g.dIni = ds[0] || null; g.dFim = ds[ds.length - 1] || null;
+    g.custo = sum(g.itens, i => i.custo);
+    g.vendidos = g.itens.filter(i => i.status === 'vendido').length;
+  }
+  return lista.sort((a, b) => (b.dFim || '').localeCompare(a.dFim || ''));
+}
+function vCompras() {
+  const U = UI.compras, P = mapaProdutos(), q = norm(U.q);
+  let lista = comprasAgrupadas();
+  if (q) lista = lista.filter(g => norm(`${g.nf} ${g.fornecedor} ${g.itens.map(i => P[i.produto]?.nome).join(' ')}`).includes(q));
+  const vis = lista.slice(0, U.limite);
+  const rows = vis.map(g => {
+    const aberta = U.abertas[g.chave];
+    const datas = g.dIni === g.dFim ? fdata(g.dIni) : `${fdata(g.dIni)} – ${fdata(g.dFim)}`;
+    let sub = '';
+    if (aberta) {
+      const porProd = {};
+      g.itens.forEach(i => {
+        const x = porProd[i.produto] = porProd[i.produto] || { n: 0, custo: 0, av: 0, val: new Set() };
+        x.n++; x.custo += i.custo || 0; if (i.status === 'avenda') x.av++; if (i.validade) x.val.add(i.validade);
+      });
+      sub = Object.entries(porProd).sort((a, b) => b[1].n - a[1].n).map(([pid, x]) => `<tr class="sub"><td></td><td colspan="2" class="prod"><div class="pn">${esc(P[pid]?.nome || '—')}</div></td><td class="num">${x.n} un.</td><td class="num">${brl(x.custo / x.n)} un.</td><td class="num">${x.av} à venda</td><td colspan="2" class="muted">Validade: ${[...x.val].sort().map(fdata).join(', ') || '—'}</td></tr>`).join('');
+    }
+    return `<tr class="clic" data-action="abrirCompra" data-chave="${esc(g.chave)}"><td class="muted">${ic(aberta ? 'chevronDown' : 'chevron', 16)}</td><td>${datas}</td><td>${chip('fornecedor', g.fornecedor)}</td><td>${esc(g.nf || 'Sem NF')}</td><td class="num">${g.itens.length}</td><td class="num">${brl(g.custo)}</td><td class="num">${g.vendidos}/${g.itens.length} vendidos</td><td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="editarCompra" data-chave="${esc(g.chave)}">Editar</button></div></td></tr>${sub}`;
+  }).join('');
+  return `<div class="page">${pageHead('Compras', 'Entradas de estoque agrupadas por nota fiscal', `<button class="btn" data-action="escolherXmlCompras">${ic('plus', 18)} Conferir notas (XMLs)</button><input type="file" id="arquivos-nfe-compra" accept=".xml,text/xml,application/xml" multiple hidden><button class="btn btn-dark" data-action="novaCompra">${ic('plus', 18)} Registrar compra</button>`)}
+  <div class="toolbar">${campoBusca('comp-q', 'compras.q', U.q, 'Buscar NF, fornecedor ou produto...')}</div>
+  <div class="table-wrap livre"><table><thead><tr><th></th><th>Data da compra</th><th>Fornecedor</th><th>NF</th><th class="num">Unidades</th><th class="num">Custo total</th><th class="num">Andamento</th><th></th></tr></thead><tbody>${rows || vazioLinha(8)}</tbody></table></div>
+  ${botaoMais(lista.length, 'compras.limite', U.limite)}
+  <p class="note">A data de compra dos itens migrados do Notion corresponde ao dia do cadastro. Use "Editar" para corrigir a data de uma NF inteira de uma vez.</p></div>`;
+}
+
+/* =========================================================
+   Vendas (Vendas gerais)
+   ========================================================= */
+function filtroPeriodo(periodo, data) {
+  if (!periodo || periodo === 'tudo') return true;
+  if (periodo.startsWith('ano:')) return (data || '').startsWith(periodo.slice(4));
+  return (data || '').startsWith(periodo);
+}
+function vVendas() {
+  const U = UI.vendas, P = mapaProdutos(), VF = mapaVF();
+  const todas = DB.estoque.filter(i => i.status === 'vendido' && i.dVenda);
+  const meses = [...new Set([hojeISO().slice(0, 7), ...todas.map(i => i.dVenda.slice(0, 7))])].sort().reverse();
+  const anos = [...new Set(meses.map(m => m.slice(0, 4)))];
+  let itens = todas.filter(i => filtroPeriodo(U.periodo, i.dVenda));
+  if (U.canal === 'ml') itens = itens.filter(i => !i.vendaFisica);
+  if (U.canal === 'fisica') itens = itens.filter(i => i.vendaFisica);
+  const q = norm(U.q);
+  if (q) itens = itens.filter(i => { const p = P[i.produto] || {}; return norm(`${p.nome} ${p.sku} ${p.fabricante} ${VF[i.vendaFisica]?.pessoa || ''}`).includes(q); });
+  const fat = sum(itens, i => i.venda), luc = sum(itens, lucro);
+  const kpis = `<div class="card block" style="margin-bottom:22px"><div class="kpis">
+    <div class="kpi"><div class="kpi-l">Faturamento</div><div class="kpi-v">${brl(fat)}</div><div class="kpi-s">${plural(itens.length, 'unidade', 'unidades')}</div></div>
+    <div class="kpi"><div class="kpi-l">Lucro</div><div class="kpi-v">${brl(luc)}</div><div class="kpi-s">margem ${pct(fat ? luc / fat : null)}</div></div>
+    <div class="kpi"><div class="kpi-l">Taxas ML</div><div class="kpi-v">${brl(sum(itens, i => (i.venda || 0) * (i.taxa || 0)))}</div></div>
+    <div class="kpi"><div class="kpi-l">Fretes</div><div class="kpi-v">${brl(sum(itens, i => i.frete))}</div></div></div></div>`;
+  const toolbar = `<div class="toolbar">${campoBusca('ven-q', 'vendas.q', U.q, 'Buscar produto ou cliente...')}
+    ${select('vendas.periodo', U.periodo, [...meses.map(m => [m, nomeMes(m)]), ...anos.map(a => ['ano:' + a, 'Ano ' + a]), ['tudo', 'Todo o período']], 'Período')}
+    ${select('vendas.canal', U.canal, [['todos', 'Todos os canais'], ['ml', 'Mercado Livre'], ['fisica', 'Vendas físicas']], 'Canal')}
+    ${U.tab === 'lista' ? `<label class="check"><input type="checkbox" data-bind="vendas.agrupar" ${U.agrupar ? 'checked' : ''}> Agrupar vendas iguais</label>` : ''}</div>`;
+  let corpo;
+  if (U.tab === 'lista') {
+    itens.sort((a, b) => b.dVenda.localeCompare(a.dVenda) || (P[a.produto]?.sku ?? 1e9) - (P[b.produto]?.sku ?? 1e9));
+    const grupos = agrupar(itens, U.agrupar);
+    LOTES = grupos;
+    corpo = `<div class="table-wrap"><table><thead><tr><th>Qtd</th><th>D. Venda</th><th class="num">SKU</th><th>Produto</th><th class="num">Custo</th><th class="num">V. Venda</th><th class="num">Taxa ML</th><th class="num">Frete</th><th class="num">Lucro</th><th class="num">Margem</th><th>Canal</th><th>Compra</th><th></th></tr></thead><tbody>
+    ${grupos.slice(0, U.limite).map((g, k) => { const i = g.it; return `<tr><td><span class="qtd">${g.ids.length}</span></td><td>${fdata(i.dVenda)}</td><td class="num muted">${P[i.produto]?.sku ?? '—'}</td>${celulaProduto(i, P)}<td class="num">${brl(i.custo)}</td><td class="num">${brl(i.venda)}</td><td class="num">${pct(i.taxa)}</td><td class="num">${brl(i.frete)}</td>${tdLucro(i)}<td class="num">${pct(margem(i))}</td><td>${i.vendaFisica ? chip('pessoa', VF[i.vendaFisica]?.pessoa || 'Venda física') : '<span class="chip c-yellow">Mercado Livre</span>'}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="devolverLote" data-lote="${k}">Devolução</button><button class="ghost-ic" data-action="editarLote" data-lote="${k}" aria-label="Editar">${ic('edit', 16)}</button></div></td></tr>`; }).join('') || vazioLinha(13, 'Nenhuma venda neste período.')}
+    </tbody></table></div>${botaoMais(grupos.length, 'vendas.limite', U.limite)}`;
+  } else {
+    const m = {};
+    itens.forEach(i => { const k = i.dVenda.slice(0, 7); const x = m[k] = m[k] || { un: 0, fat: 0, custo: 0, taxas: 0, fretes: 0, luc: 0 }; x.un++; x.fat += i.venda || 0; x.custo += i.custo || 0; x.taxas += (i.venda || 0) * (i.taxa || 0); x.fretes += i.frete || 0; x.luc += lucro(i) || 0; });
+    const linhas = Object.entries(m).sort((a, b) => b[0].localeCompare(a[0]));
+    corpo = `<div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Unidades</th><th class="num">Faturamento</th><th class="num">Custo</th><th class="num">Taxas ML</th><th class="num">Fretes</th><th class="num">Lucro</th><th class="num">Margem</th></tr></thead><tbody>
+    ${linhas.map(([k, x]) => `<tr class="clic" data-action="set" data-path="vendas.periodo" data-value="${k}" data-tab="lista"><td>${nomeMes(k)}</td><td class="num">${x.un}</td><td class="num">${brl(x.fat)}</td><td class="num">${brl(x.custo)}</td><td class="num">${brl(x.taxas)}</td><td class="num">${brl(x.fretes)}</td><td class="num ${x.luc < 0 ? 'neg' : ''}">${brl(x.luc)}</td><td class="num">${pct(x.fat ? x.luc / x.fat : null)}</td></tr>`).join('') || vazioLinha(8, 'Nenhuma venda neste período.')}
+    </tbody></table></div>`;
+  }
+  return `<div class="page">${pageHead('Vendas', 'Vendas gerais do Mercado Livre e vendas físicas', `<button class="btn" data-action="escolherXmlVendas">${ic('plus', 18)} Importar XMLs</button><input type="file" id="arquivos-nfe-venda" accept=".xml,text/xml,application/xml" multiple hidden><button class="btn btn-dark" data-action="novaVenda">${ic('plus', 18)} Nova venda</button>`)}
+  ${tabs('vendas.tab', U.tab, [['lista', 'Lista de vendas'], ['mes', 'Por mês']])}${toolbar}${kpis}${corpo}</div>`;
+}
+
+/* =========================================================
+   Vendas Físicas
+   ========================================================= */
+function vFisicas() {
+  const U = UI.fisicas, sv = statsVF(), q = norm(U.q);
+  let lista = DB.vendasFisicas.map(v => ({ v, s: sv[v.id], status: statusPgto(v.pago, sv[v.id].venda) }));
+  const nPend = lista.filter(x => x.status !== 'Pago').length;
+  if (U.tab === 'pendentes') lista = lista.filter(x => x.status !== 'Pago');
+  if (U.tab === 'pagas') lista = lista.filter(x => x.status === 'Pago');
+  if (q) lista = lista.filter(x => norm(x.v.pessoa).includes(q));
+  lista.sort((a, b) => (b.v.data || '').localeCompare(a.v.data || ''));
+  const totV = sum(lista, x => x.s.venda), totP = sum(lista, x => x.v.pago);
+  return `<div class="page">${pageHead('Vendas Físicas', 'Controle de vendas presenciais e pagamentos', `<button class="btn btn-dark" data-action="novaFisica">${ic('plus', 18)} Nova venda física</button>`)}
+  ${tabs('fisicas.tab', U.tab, [['pendentes', 'Pendentes', nPend], ['pagas', 'Pagas', DB.vendasFisicas.length - nPend], ['todas', 'Todas', DB.vendasFisicas.length]])}
+  <div class="toolbar">${campoBusca('fis-q', 'fisicas.q', U.q, 'Buscar cliente...')}</div>
+  <div class="summary"><span>Vendido <b>${brl(totV)}</b></span><span>Recebido <b>${brl(totP)}</b></span><span>A receber <b style="color:${totV - totP > 0.005 ? 'var(--red)' : 'inherit'}">${brl(Math.max(0, totV - totP))}</b></span></div>
+  <div class="table-wrap livre"><table><thead><tr><th>Cliente</th><th>Data</th><th class="num">Itens</th><th class="num">V. Venda</th><th class="num">Pago</th><th class="num">Pgto Pendente</th><th>Status pgto</th><th class="num">Custo</th><th class="num">Lucro</th><th></th></tr></thead><tbody>
+  ${lista.map(({ v, s, status }) => `<tr class="clic" data-action="abrirFisica" data-id="${v.id}"><td><b style="font-weight:500">${esc(v.pessoa)}</b></td><td class="muted">${fdata(v.data)}</td><td class="num">${s.itens}</td><td class="num">${brl(s.venda)}</td><td class="num">${brl(v.pago)}</td><td class="num ${s.venda - v.pago > 0.005 ? 'neg' : ''}">${brl(Math.max(0, s.venda - (v.pago || 0)))}</td><td>${chip('pgto', status)}</td><td class="num">${brl(s.custo)}</td><td class="num">${brl(s.venda - s.custo)}</td><td><div class="row-actions">${status !== 'Pago' ? `<button class="btn btn-sm btn-soft" data-action="quitarFisica" data-id="${v.id}">Quitar</button>` : ''}<button class="ghost-ic" data-action="abrirFisica" data-id="${v.id}" aria-label="Abrir">${ic('edit', 16)}</button></div></td></tr>`).join('') || vazioLinha(10, 'Nenhuma venda física aqui.')}
+  </tbody></table></div></div>`;
+}
+
+/* =========================================================
+   Encomendas
+   ========================================================= */
+function vEncomendas() {
+  const U = UI.encomendas, q = norm(U.q);
+  const aberta = e => !['Entregue', 'Cancelada'].includes(e.status);
+  let lista = DB.encomendas.slice();
+  const nAb = lista.filter(aberta).length;
+  if (U.tab === 'abertas') lista = lista.filter(aberta);
+  if (U.tab === 'fechadas') lista = lista.filter(e => !aberta(e));
+  if (q) lista = lista.filter(e => norm(`${e.cliente} ${e.produto} ${e.obs}`).includes(q));
+  lista.sort((a, b) => (a.previsao || '9999').localeCompare(b.previsao || '9999') || (b.dPedido || '').localeCompare(a.dPedido || ''));
+  const h = hojeISO();
+  return `<div class="page">${pageHead('Encomendas', 'Pedidos de clientes para produtos que ainda não estão no estoque', `<button class="btn btn-dark" data-action="novaEncomenda">${ic('plus', 18)} Nova encomenda</button>`)}
+  ${tabs('encomendas.tab', U.tab, [['abertas', 'Em aberto', nAb], ['fechadas', 'Entregues e canceladas', DB.encomendas.length - nAb], ['todas', 'Todas', DB.encomendas.length]])}
+  <div class="toolbar">${campoBusca('enc-q', 'encomendas.q', U.q, 'Buscar cliente ou produto...')}</div>
+  <div class="table-wrap livre"><table><thead><tr><th>Cliente</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor</th><th class="num">Sinal pago</th><th>Pedido em</th><th>Previsão</th><th>Status</th><th>Observações</th><th></th></tr></thead><tbody>
+  ${lista.map(e => `<tr><td><b style="font-weight:500">${esc(e.cliente)}</b></td><td class="prod">${esc(e.produto)}</td><td class="num">${e.qtd ?? '—'}</td><td class="num">${brl(e.valor)}</td><td class="num">${brl(e.sinal)}</td><td class="muted">${fdata(e.dPedido)}</td><td>${e.previsao ? `<span class="chip ${aberta(e) && e.previsao < h ? 'c-red' : 'c-plain'}">${fdata(e.previsao)}</span>` : '<span class="faint">—</span>'}</td>
+  <td><select class="sel enc-status" data-id="${e.id}" aria-label="Status" style="height:32px">${STATUS_ENC.map(s => `<option ${s === e.status ? 'selected' : ''}>${s}</option>`).join('')}</select></td><td class="muted" style="white-space:normal;max-width:260px">${esc(e.obs || '')}</td>
+  <td><div class="row-actions"><button class="ghost-ic" data-action="editarEncomenda" data-id="${e.id}" aria-label="Editar">${ic('edit', 16)}</button></div></td></tr>`).join('') || vazioLinha(10, 'Nenhuma encomenda por aqui. Use "Nova encomenda" para registrar um pedido.')}
+  </tbody></table></div></div>`;
+}
+
+/* =========================================================
+   DRE
+   ========================================================= */
+function vDRE() {
+  const U = UI.dre;
+  const anos = [...new Set([hojeISO().slice(0, 4), ...DB.estoque.filter(i => i.dVenda).map(i => i.dVenda.slice(0, 4)), ...DB.despesas.filter(d => d.data).map(d => d.data.slice(0, 4))])].sort().reverse();
+  const m = {};
+  const add = k => (m[k] = m[k] || { fat: 0, cmv: 0, taxas: 0, fretes: 0, luc: 0, desp: 0, un: 0 });
+  DB.estoque.forEach(i => {
+    if (i.status !== 'vendido' || !(i.dVenda || '').startsWith(U.ano)) return;
+    const x = add(i.dVenda.slice(0, 7));
+    x.fat += i.venda || 0; x.cmv += i.custo || 0; x.taxas += (i.venda || 0) * (i.taxa || 0); x.fretes += i.frete || 0; x.luc += lucro(i) || 0; x.un++;
+  });
+  DB.despesas.forEach(d => { if ((d.data || '').startsWith(U.ano)) add(d.data.slice(0, 7)).desp += d.valor || 0; });
+  const linhas = Object.entries(m).sort((a, b) => a[0].localeCompare(b[0]));
+  const maxAbs = Math.max(1, ...linhas.map(([, x]) => Math.abs(x.luc - x.desp)));
+  const T = linhas.reduce((t, [, x]) => { for (const k in x) t[k] = (t[k] || 0) + x[k]; return t; }, {});
+  return `<div class="page">${pageHead('DRE', 'Demonstrativo de resultado, calculado automaticamente a partir das vendas e despesas', `<button class="btn" data-action="go" data-view="despesas">Ver despesas</button>`)}
+  <div class="toolbar">${select('dre.ano', U.ano, anos.map(a => [a, a]), 'Ano')}</div>
+  <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Unidades</th><th class="num">Faturamento</th><th class="num">(−) Custo mercadoria</th><th class="num">(−) Taxas ML</th><th class="num">(−) Fretes</th><th class="num">Lucro bruto</th><th class="num">(−) Despesas</th><th class="num">Lucro líquido</th><th class="num">Margem líq.</th><th></th></tr></thead><tbody>
+  ${linhas.map(([k, x]) => { const liq = x.luc - x.desp; return `<tr><td>${MESES[+k.slice(5, 7) - 1]}</td><td class="num">${x.un}</td><td class="num">${brl(x.fat)}</td><td class="num">${brl(x.cmv)}</td><td class="num">${brl(x.taxas)}</td><td class="num">${brl(x.fretes)}</td><td class="num">${brl(x.luc)}</td><td class="num">${brl(x.desp)}</td><td class="num ${liq < 0 ? 'neg' : ''}"><b style="font-weight:500">${brl(liq)}</b></td><td class="num">${pct(x.fat ? liq / x.fat : null)}</td><td><span class="minibar ${liq < 0 ? 'neg' : ''}"><i style="width:${Math.abs(liq) / maxAbs * 100}%"></i></span></td></tr>`; }).join('') || vazioLinha(11, 'Sem movimento neste ano.')}
+  ${linhas.length ? `<tr class="total"><td>Total ${U.ano}</td><td class="num">${T.un}</td><td class="num">${brl(T.fat)}</td><td class="num">${brl(T.cmv)}</td><td class="num">${brl(T.taxas)}</td><td class="num">${brl(T.fretes)}</td><td class="num">${brl(T.luc)}</td><td class="num">${brl(T.desp)}</td><td class="num ${T.luc - T.desp < 0 ? 'neg' : ''}">${brl(T.luc - T.desp)}</td><td class="num">${pct(T.fat ? (T.luc - T.desp) / T.fat : null)}</td><td></td></tr>` : ''}
+  </tbody></table></div>
+  <p class="note">Lucro bruto = faturamento − custo − taxa ML − frete (a mesma fórmula de "Lucro" do Notion). Lucro líquido = lucro bruto − despesas do mês.</p></div>`;
+}
+
+/* =========================================================
+   Despesas
+   ========================================================= */
+function vDespesas() {
+  const U = UI.despesas;
+  const meses = [...new Set([hojeISO().slice(0, 7), ...DB.despesas.filter(d => d.data).map(d => d.data.slice(0, 7))])].sort().reverse();
+  const anos = [...new Set(meses.map(m => m.slice(0, 4)))];
+  const lista = DB.despesas.filter(d => filtroPeriodo(U.periodo, d.data)).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+  const porMes = {};
+  DB.despesas.forEach(d => { const k = (d.data || '').slice(0, 7) || 'sem data'; porMes[k] = (porMes[k] || 0) + (d.valor || 0); });
+  return `<div class="page">${pageHead('Despesas', 'Gastos da operação que entram no DRE', `<button class="btn btn-dark" data-action="novaDespesa">${ic('plus', 18)} Nova despesa</button>`)}
+  <div class="grid-side"><div>
+    <div class="toolbar">${select('despesas.periodo', U.periodo, [...meses.map(m => [m, nomeMes(m)]), ...anos.map(a => ['ano:' + a, 'Ano ' + a]), ['tudo', 'Todo o período']], 'Período')}</div>
+    <div class="table-wrap livre"><table><thead><tr><th>Nome</th><th>Data</th><th class="num">Valor</th><th></th></tr></thead><tbody>
+    ${lista.map(d => `<tr><td>${esc(d.nome)}</td><td class="muted">${fdata(d.data)}</td><td class="num">${brl(d.valor)}</td><td><div class="row-actions"><button class="ghost-ic" data-action="editarDespesa" data-id="${d.id}" aria-label="Editar">${ic('edit', 16)}</button></div></td></tr>`).join('') || vazioLinha(4, 'Nenhuma despesa neste período.')}
+    ${lista.length ? `<tr class="total"><td colspan="2">Total</td><td class="num">${brl(sum(lista, d => d.valor))}</td><td></td></tr>` : ''}
+    </tbody></table></div>
+  </div>
+  <div class="card side-card"><div class="side-head"><h2>Por mês</h2></div>
+    ${Object.keys(porMes).length ? `<ul class="mini-list">${Object.entries(porMes).sort((a, b) => b[0].localeCompare(a[0])).map(([k, v]) => `<li><span>${k === 'sem data' ? 'Sem data' : nomeMes(k)}</span><b style="font-weight:500">${brl(v)}</b></li>`).join('')}</ul>` : '<p class="empty-note">Nenhuma despesa lançada</p>'}
+  </div></div></div>`;
+}
+
+/* =========================================================
+   Dados e backup
+   ========================================================= */
+function vConfig() {
+  const c = DB.config;
+  const kb = Math.round(JSON.stringify(DB).length / 1024);
+  return `<div class="page">${pageHead('Dados e backup', 'Os dados ficam salvos neste navegador. Baixe um backup de vez em quando.')}
+  <div class="cfg-grid">
+    <div class="card side-card">
+      <div class="side-head"><h2>Seus dados</h2></div>
+      <div class="counts">
+        <div class="stat"><span>Produtos</span><b>${DB.produtos.length}</b></div>
+        <div class="stat"><span>Unidades em estoque</span><b>${DB.estoque.length.toLocaleString('pt-BR')}</b></div>
+        <div class="stat"><span>Vendas físicas</span><b>${DB.vendasFisicas.length}</b></div>
+        <div class="stat"><span>Despesas</span><b>${DB.despesas.length}</b></div>
+        <div class="stat"><span>Encomendas</span><b>${DB.encomendas.length}</b></div>
+        <div class="stat"><span>Tamanho</span><b>${kb} KB</b></div>
+      </div>
+      <div class="cfg-actions">
+        <button class="btn btn-dark" data-action="exportar">Baixar backup (.json)</button>
+        <button class="btn" data-action="importar">Importar backup</button>
+        <p class="hint" style="margin:6px 0 0;line-height:1.5">Para usar em outro computador ou navegador: baixe o backup aqui e importe lá.</p>
+      </div>
+      <div class="sub-title">Zona de cuidado</div>
+      <div class="cfg-actions">
+        <button class="btn btn-sm btn-danger" data-action="restaurarNotion">Restaurar dados do Notion (${esc(window.DADOS_NOTION?.migradoEm ? fdata(window.DADOS_NOTION.migradoEm) : 'indisponível')})</button>
+        <button class="btn btn-sm btn-danger" data-action="apagarTudo">Apagar todos os dados</button>
+      </div>
+      ${armazenamentoOk ? '' : '<p class="neg" style="margin-top:14px">Este navegador está bloqueando o armazenamento local. As alterações serão perdidas ao fechar a página, a menos que você baixe um backup.</p>'}
+    </div>
+    <div class="card side-card">
+      <div class="side-head"><h2>Preferências</h2></div>
+      <div class="form-grid">
+        <div class="f"><label for="cfg-taxa">Taxa ML padrão (%)</label><input id="cfg-taxa" inputmode="decimal" value="${fmtIn(c.taxaPadrao * 100)}"></div>
+      </div>
+      <div class="form-grid">
+        <div class="f"><label for="cfg-forn">Fornecedores</label><textarea id="cfg-forn" rows="6">${esc(c.fornecedores.join('\n'))}</textarea><span class="hint">Um por linha</span></div>
+        <div class="f"><label for="cfg-tipos">Categorias</label><textarea id="cfg-tipos" rows="6">${esc(c.tipos.join('\n'))}</textarea><span class="hint">Um por linha</span></div>
+      </div>
+      <div class="form-grid"><div class="f full"><label for="cfg-fab">Fabricantes</label><textarea id="cfg-fab" rows="6">${esc(c.fabricantes.join('\n'))}</textarea><span class="hint">Um por linha</span></div></div>
+      <button class="btn btn-dark" data-action="salvarPrefs">Salvar preferências</button>
+    </div>
+    ${cardML()}
+  </div></div>`;
+}
+
+/* =========================================================
+   Integração Mercado Livre (Supabase "ML Admin")
+   Só leitura: mostra os pedidos puxados, não altera estoque nem vendas.
+   ========================================================= */
+const ML_URL = 'https://rjntddpjwqxxwmainogw.supabase.co/functions/v1';
+const CHAVE_ML = 'belaOrdemMlChave';
+const ML = { status: null, pedidos: null, ocupado: false };
+const mlChave = () => { try { return localStorage.getItem(CHAVE_ML) || ''; } catch (e) { return ''; } };
+
+async function mlChamar(action, extra = {}) {
+  const r = await fetch(`${ML_URL}/ml-sync`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-bo-key': mlChave() },
+    body: JSON.stringify({ action, ...extra }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `Erro ${r.status}`);
+  return j;
+}
+
+function cardML() {
+  const chave = mlChave();
+  let corpo;
+  if (!chave) {
+    corpo = `<p class="hint" style="margin:0 0 10px;line-height:1.5">Cole a chave de acesso (arquivo bo-key.txt) para liberar a conexão com o Mercado Livre neste navegador.</p>
+      <div class="form-grid"><div class="f full"><label for="ml-chave">Chave de acesso</label><input id="ml-chave" type="password" autocomplete="off"></div></div>
+      <button class="btn btn-dark" data-action="mlSalvarChave">Salvar chave</button>`;
+  } else {
+    const s = ML.status;
+    const estado = !s ? 'Verificando...' : s.connected ? `Conectado (conta ${esc(String(s.ml_user_id))})` : 'Não conectado';
+    const ped = ML.pedidos;
+    const tabela = ped ? (ped.length ? `<div class="table-wrap livre" style="margin-top:14px"><table><thead><tr><th>Data</th><th>Status</th><th>Itens</th><th class="num">Total</th><th class="num">Taxa ML</th></tr></thead><tbody>
+      ${ped.slice(0, 15).map(o => `<tr><td>${fdata(o.date_created.slice(0, 10))}</td><td>${esc(o.status || '')}</td><td>${esc((o.items || []).map(i => `${i.qty}× ${i.title}`).join(', '))}</td><td class="num">${brl(o.total_amount)}</td><td class="num">${brl(o.sale_fee)}</td></tr>`).join('')}
+      </tbody></table></div><p class="hint" style="margin-top:6px">${plural(ped.length, 'pedido', 'pedidos')} guardados. Mostrando os 15 mais recentes. Isso não altera seu estoque nem suas vendas.</p>` : '<p class="hint" style="margin-top:12px">Nenhum pedido guardado ainda. Clique em "Sincronizar vendas".</p>') : '';
+    corpo = `<div class="stat" style="margin-bottom:12px"><span>Situação</span><b>${estado}</b></div>
+      <div class="cfg-actions">
+        <button class="btn" data-action="mlConectar">${s?.connected ? 'Reconectar' : 'Conectar Mercado Livre'}</button>
+        <button class="btn btn-dark" data-action="mlSincronizar" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>${ML.ocupado ? 'Sincronizando...' : 'Sincronizar vendas (60 dias)'}</button>
+        <button class="btn" data-action="mlConferir" ${ML.pedidos?.length ? '' : 'disabled'}>Conferir com meu estoque</button>
+        <button class="btn btn-sm btn-soft" data-action="mlTirarChave">Remover chave deste navegador</button>
+      </div>${tabela}`;
+  }
+  return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Mercado Livre</h2></div>${corpo}</div>`;
+}
+
+/* ---------- Conferir pedidos do ML com o estoque (evita venda duplicada) ----------
+   Para cada item de pedido pago, ligado ao produto pelo SKU:
+   - "já conferida": alguma unidade já guarda o número desse pedido (mlPedido)
+   - "já lançada": existe unidade vendida (sem pedido ligado) do mesmo produto, data ±1 dia e mesmo valor
+                   -> só vincula o número do pedido, não cria venda
+   - "nova": cria a venda dando baixa nas unidades mais antigas/de validade mais próxima */
+const diasEntre = (a, b) => Math.abs((Date.parse(a) - Date.parse(b)) / 86400000);
+const dataBR = iso => new Date(Date.parse(iso) - 3 * 3600e3).toISOString().slice(0, 10);
+
+function mlAnalisar() {
+  const linhas = [], usados = new Set();
+  const pedidos = (ML.pedidos || []).filter(o => o.status === 'paid').sort((a, b) => a.date_created.localeCompare(b.date_created));
+  for (const o of pedidos) {
+    const data = dataBR(o.date_created);
+    for (const it of o.items || []) {
+      const qtd = it.qty || 1;
+      const prod = it.sku != null ? DB.produtos.find(p => String(p.sku) === String(it.sku)) : null;
+      const base = { o, it, prod, qtd, data, ids: [] };
+      if (!prod) { linhas.push({ ...base, estado: 'semprod' }); continue; }
+      if (DB.estoque.filter(u => u.mlPedido === o.id && u.produto === prod.id).length >= qtd) { linhas.push({ ...base, estado: 'ja' }); continue; }
+      const dup = DB.estoque.filter(u => u.produto === prod.id && u.status === 'vendido' && !u.vendaFisica && !u.mlPedido && !usados.has(u.id)
+        && u.dVenda && diasEntre(u.dVenda, data) <= 1 && Math.abs((u.venda || 0) - it.unit_price) <= 0.5).slice(0, qtd);
+      if (dup.length >= qtd) { dup.forEach(u => usados.add(u.id)); linhas.push({ ...base, estado: 'dup', ids: dup.map(u => u.id) }); continue; }
+      if (dup.length) { dup.forEach(u => usados.add(u.id)); linhas.push({ ...base, estado: 'revisar', ids: dup.map(u => u.id) }); continue; }
+      const livres = unidadesDisponiveis(prod.id).filter(u => !usados.has(u.id));
+      if (livres.length < qtd) { linhas.push({ ...base, estado: 'semestoque' }); continue; }
+      const sel = livres.slice(0, qtd); sel.forEach(u => usados.add(u.id));
+      linhas.push({ ...base, estado: 'nova', ids: sel.map(u => u.id) });
+    }
+  }
+  return linhas;
+}
+
+const ML_ESTADOS = {
+  ja: ['c-gray', 'Já conferida', false],
+  dup: ['c-yellow', 'Já lançada: só vincular', true],
+  nova: ['c-green', 'Nova venda', true],
+  revisar: ['c-orange', 'Parte já lançada: revise à mão', false],
+  semestoque: ['c-red', 'Sem unidade à venda', false],
+  semprod: ['c-red', 'SKU não encontrado', false],
+};
+
+function modalConferirML() {
+  const linhas = mlAnalisar();
+  const cont = e => linhas.filter(l => l.estado === e).length;
+  const mostrar = linhas.filter(l => l.estado !== 'ja');
+  const corpo = `<div class="info">${plural(cont('nova'), 'venda nova', 'vendas novas')} · ${plural(cont('dup'), 'já lançada', 'já lançadas')} · ${cont('ja')} já conferidas · para revisar: ${cont('semestoque')} sem unidade à venda, ${cont('semprod')} sem SKU/produto, ${cont('revisar')} parcialmente lançadas.<br>
+    <span class="hint">Vendas novas dão baixa no estoque. As "já lançadas" só ganham o número do pedido, sem duplicar. O frete não vem do ML: nas novas ele fica em branco. Baixe um backup antes de aplicar.</span></div>
+  <div class="table-wrap livre" style="margin-top:12px;max-height:48vh;overflow:auto"><table><thead><tr><th></th><th>Data</th><th>SKU</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor un.</th><th>Situação</th></tr></thead><tbody>
+  ${mostrar.map(l => { const [cor, txt, marcavel] = ML_ESTADOS[l.estado]; const k = linhas.indexOf(l);
+    return `<tr><td><input type="checkbox" class="ml-inc" data-k="${k}" ${marcavel ? 'checked' : 'disabled'} aria-label="Aplicar"></td><td>${fdata(l.data)}</td><td class="muted">${esc(l.it.sku ?? '—')}</td><td>${esc(l.prod ? l.prod.nome : l.it.title)}</td><td class="num">${l.qtd}</td><td class="num">${brl(l.it.unit_price)}</td><td><span class="chip ${cor}">${txt}</span></td></tr>`; }).join('') || vazioLinha(7, 'Nada para conferir.')}
+  </tbody></table></div>`;
+  abrirModal({
+    titulo: 'Conferir pedidos do Mercado Livre', corpo, largura: 980, rodape: rodapePadrao('Aplicar marcados'), dados: { linhasML: linhas },
+    onConfirm: () => {
+      const marcados = $$('.ml-inc:checked').map(c => MODAL.linhasML[+c.dataset.k]);
+      let novas = 0, vinc = 0;
+      for (const l of marcados) {
+        const us = DB.estoque.filter(u => l.ids.includes(u.id));
+        if (l.estado === 'nova') {
+          venderUnidades(us, { venda: l.it.unit_price, taxa: l.it.unit_price ? (l.it.sale_fee || 0) / l.it.unit_price : null, frete: null, data: l.data });
+          us.forEach(u => { u.mlPedido = l.o.id; }); novas += us.length;
+        } else if (l.estado === 'dup') { us.forEach(u => { u.mlPedido = l.o.id; }); vinc += us.length; }
+      }
+      commit(`${plural(novas, 'unidade vendida', 'unidades vendidas')}, ${plural(vinc, 'vinculada', 'vinculadas')}`);
+    },
+  });
+}
+
+async function mlAtualizar() {
+  try {
+    ML.status = await mlChamar('status');
+    if (ML.status.connected) ML.pedidos = (await mlChamar('list', { limit: 1000 })).orders;
+  } catch (e) { ML.status = { connected: false }; toast(e.message, true); }
+  if (UI.view === 'config') render();
+}
+
+/* =========================================================
+   Janelas (modais)
+   ========================================================= */
+let MODAL = null;
+const rodapePadrao = (txt = 'Salvar', esquerda = '') => `${esquerda}<button class="btn btn-soft" data-action="fecharModal">Cancelar</button><button class="btn btn-dark" data-action="confirmarModal">${txt}</button>`;
+function abrirModal({ titulo, corpo, rodape, largura = 560, onConfirm, classe = '', dados = {} }) {
+  MODAL = { onConfirm, ...dados };
+  $('#modal-root').innerHTML = `<div class="overlay" data-action="fundoModal"><div class="modal ${classe}" style="max-width:${largura}px" role="dialog" aria-modal="true" aria-label="${esc(titulo)}">
+    <div class="modal-head"><h3>${titulo}</h3><button class="ghost-ic" data-action="fecharModal" aria-label="Fechar">${ic('x')}</button></div>
+    <div class="modal-body">${corpo}</div><div class="modal-foot">${rodape ?? rodapePadrao()}</div></div></div>`;
+  const first = $('#modal-root .modal-body input:not([type=radio]):not([type=checkbox]), #modal-root .modal-body select, #modal-root .modal-foot .btn-dark');
+  if (first) setTimeout(() => first.focus(), 30);
+}
+function fecharModal() { $('#modal-root').innerHTML = ''; MODAL = null; }
+function confirmar(titulo, msg, onYes, { texto = 'Confirmar', perigo = false } = {}) {
+  abrirModal({
+    titulo, largura: 460, corpo: `<p class="muted" style="margin:4px 0 8px;line-height:1.55">${msg}</p>`,
+    rodape: `<button class="btn btn-soft" data-action="fecharModal">Cancelar</button><button class="btn ${perigo ? 'btn-danger' : 'btn-dark'}" data-action="confirmarModal">${texto}</button>`,
+    onConfirm: onYes,
+  });
+}
+const val = id => ($('#' + id)?.value ?? '').trim();
+function toast(msg, erro = false) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (erro ? ' erro' : '');
+  t.textContent = msg;
+  $('#toast-root').appendChild(t);
+  setTimeout(() => t.remove(), erro ? 4200 : 2600);
+}
+const erro = msg => { toast(msg, true); return false; };
+const campo = (id, rotulo, input, cls = '') => `<div class="f ${cls}"><label for="${id}">${rotulo}</label>${input}</div>`;
+const inputTxt = (id, v, attrs = '') => `<input id="${id}" value="${esc(v ?? '')}" ${attrs}>`;
+const inputNum = (id, v, attrs = '') => `<input id="${id}" inputmode="decimal" value="${fmtIn(v)}" placeholder="0,00" ${attrs}>`;
+const inputData = (id, v) => `<input id="${id}" type="date" value="${esc(v || '')}">`;
+function lerNums(ids) {
+  const out = {};
+  for (const [k, id] of Object.entries(ids)) {
+    const n = parseNum(val(id));
+    if (Number.isNaN(n)) return null;
+    out[k] = n;
+  }
+  return out;
+}
+const datalistLista = (id, lista) => `<datalist id="${id}">${lista.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
+
+/* ---------- Vender ---------- */
+function modalVender({ lote = null, produtoId = null } = {}) {
+  const P = mapaProdutos();
+  const pid = lote ? lote.it.produto : produtoId;
+  const p = pid ? P[pid] : null;
+  const ref = lote ? lote.it : (pid ? unidadesDisponiveis(pid)[0] : null);
+  const max = lote ? lote.ids.length : (pid ? unidadesDisponiveis(pid).length : 0);
+  const pessoas = [...new Set(DB.vendasFisicas.slice().sort((a, b) => (b.data || '').localeCompare(a.data || '')).map(v => v.pessoa))];
+  const corpo = `${lote
+    ? `<div class="info"><b>${esc(p?.nome || 'Produto')}</b><br>${plural(max, 'unidade', 'unidades')} neste lote · validade ${fdata(ref.validade)} · NF ${esc(ref.nf || '—')}</div>`
+    : `<div class="form-grid">${campo('mv-prod', 'Produto', `<input id="mv-prod" list="dl-mv" value="${p ? esc(labelProduto(p)) : ''}" placeholder="Digite o nome ou SKU" autocomplete="off">${datalistProdutos('dl-mv', true)}<span class="hint" id="mv-disp">${p ? plural(max, 'unidade à venda', 'unidades à venda') : 'Só aparecem produtos com unidades à venda'}</span>`, 'full')}</div>`}
+  <div class="form-grid">
+    ${campo('mv-qtd', 'Quantidade', `<input id="mv-qtd" type="number" min="1" ${max ? `max="${max}"` : ''} value="1">`)}
+    ${campo('mv-data', 'Data da venda', inputData('mv-data', hojeISO()))}
+  </div>
+  <div class="form-grid"><div class="f full"><span class="lbl">Canal</span><div class="seg"><label><input type="radio" name="mv-canal" value="ml" checked><span>Mercado Livre</span></label><label><input type="radio" name="mv-canal" value="fisica"><span>Venda física</span></label></div></div></div>
+  <div class="form-grid">
+    ${campo('mv-venda', 'Valor de venda (un.)', inputNum('mv-venda', ref?.venda))}
+    ${campo('mv-taxa', 'Taxa ML (%)', inputNum('mv-taxa', ref?.taxa != null ? ref.taxa * 100 : DB.config.taxaPadrao * 100), 'so-ml')}
+    ${campo('mv-frete', 'Frete (un.)', inputNum('mv-frete', ref?.frete), 'so-ml')}
+  </div>
+  <div class="form-grid so-fisica">${campo('mv-pessoa', 'Cliente', `<input id="mv-pessoa" list="dl-pessoas" placeholder="Ex.: Pamela Setembro" autocomplete="off">${datalistLista('dl-pessoas', pessoas)}<span class="hint">Se já existir uma venda física com esse nome, o item entra nela. Se não, uma nova é criada.</span>`, 'full')}</div>`;
+  abrirModal({
+    titulo: 'Registrar venda', corpo, largura: 620, rodape: rodapePadrao('Confirmar venda'),
+    onConfirm: () => {
+      const prod = lote ? P[lote.it.produto] : produtoPorLabel(val('mv-prod'));
+      if (!prod) return erro('Escolha um produto da lista.');
+      const idsLote = lote ? new Set(lote.ids) : null;
+      const cands = lote ? DB.estoque.filter(i => idsLote.has(i.id) && i.status === 'avenda') : unidadesDisponiveis(prod.id);
+      const qtd = parseInt(val('mv-qtd'), 10);
+      if (!(qtd >= 1)) return erro('Informe a quantidade.');
+      if (qtd > cands.length) return erro(`Só há ${plural(cands.length, 'unidade disponível', 'unidades disponíveis')}.`);
+      const n = lerNums({ venda: 'mv-venda', taxa: 'mv-taxa', frete: 'mv-frete' });
+      if (!n) return erro('Confira os valores digitados.');
+      const data = val('mv-data') || hojeISO();
+      const canal = $('input[name=mv-canal]:checked').value;
+      let vf = null;
+      if (canal === 'fisica') {
+        const nome = val('mv-pessoa');
+        if (!nome) return erro('Informe o cliente da venda física.');
+        vf = obterVendaFisica(nome, data);
+      }
+      venderUnidades(cands.slice(0, qtd), { venda: n.venda, taxa: n.taxa == null ? null : n.taxa / 100, frete: n.frete, data, vendaFisica: vf });
+      commit(`${plural(qtd, 'unidade vendida', 'unidades vendidas')}`);
+    },
+  });
+}
+function atualizarVenderProduto() {
+  const p = produtoPorLabel(val('mv-prod'));
+  const hint = $('#mv-disp');
+  if (!p) { if (hint) hint.textContent = 'Só aparecem produtos com unidades à venda'; return; }
+  const us = unidadesDisponiveis(p.id);
+  hint.textContent = plural(us.length, 'unidade à venda', 'unidades à venda');
+  $('#mv-qtd').max = us.length;
+  const u = us[0];
+  if (u) {
+    $('#mv-venda').value = fmtIn(u.venda);
+    $('#mv-taxa').value = fmtIn(u.taxa != null ? u.taxa * 100 : DB.config.taxaPadrao * 100);
+    $('#mv-frete').value = fmtIn(u.frete);
+  }
+}
+
+/* ---------- Vendas em massa (XMLs de NF-e de venda) ---------- */
+function linhaVendaXml(it, ni, nota, achado) {
+  const ref = achado ? unidadesDisponiveis(achado.id)[0] : null;
+  const jaImp = nota.chave && DB.estoque.some(i => i.nfVenda === nota.chave);
+  return `<tr class="vx-linha ${achado ? '' : 'mc-pend'}" data-n="${ni}"><td><input type="checkbox" class="vx-inc" ${achado && !jaImp ? 'checked' : ''} aria-label="Incluir"></td>
+  <td class="muted">${esc(nota.nf || '—')}<br><span class="hint">${fdata(nota.data)}${jaImp ? ' · <b style="color:var(--red)">já importada</b>' : ''}</span></td>
+  <td class="w-prod"><input class="vx-prod" list="dl-vx" value="${achado ? esc(labelProduto(achado)) : ''}" placeholder="${esc(it.nome)}" autocomplete="off" aria-label="Produto"></td>
+  <td class="num faint vx-disp">${achado ? unidadesDisponiveis(achado.id).length : '—'}</td>
+  <td><input class="vx-qtd" type="number" min="1" value="${it.qtd}" aria-label="Quantidade"></td>
+  <td><input class="vx-venda" inputmode="decimal" value="${fmtIn(Math.round(it.valorUn * 100) / 100)}" aria-label="Valor de venda"></td>
+  <td><input class="vx-taxa" inputmode="decimal" value="${fmtIn(ref?.taxa != null ? ref.taxa * 100 : DB.config.taxaPadrao * 100)}" aria-label="Taxa ML %"></td>
+  <td><input class="vx-frete" inputmode="decimal" value="${fmtIn(ref?.frete)}" placeholder="0,00" aria-label="Frete"></td></tr>`;
+}
+function preencherLinhaVx(tr) {
+  const prod = produtoPorLabel(tr.querySelector('.vx-prod').value);
+  tr.querySelector('.vx-disp').textContent = prod ? unidadesDisponiveis(prod.id).length : '—';
+  if (!prod) return;
+  tr.classList.remove('mc-pend');
+  tr.querySelector('.vx-inc').checked = true;
+  const ref = unidadesDisponiveis(prod.id)[0] || DB.estoque.filter(i => i.produto === prod.id).sort((a, b) => (b.dCompra || '').localeCompare(a.dCompra || ''))[0];
+  if (ref) { tr.querySelector('.vx-taxa').value = fmtIn(ref.taxa != null ? ref.taxa * 100 : DB.config.taxaPadrao * 100); tr.querySelector('.vx-frete').value = fmtIn(ref.frete); }
+}
+function modalVendasXml(arquivos) {
+  const notas = [], falhas = [];
+  for (const a of arquivos) {
+    const n = lerNFe(a.texto);
+    if (n && n.itens.length) notas.push({ ...n, arquivo: a.nome }); else falhas.push(a.nome);
+  }
+  if (!notas.length) return erro(falhas.length === 1 ? `${falhas[0]} não parece o XML de uma NF-e.` : 'Nenhum dos arquivos parece o XML de uma NF-e.');
+  const so = x => String(x || '').replace(/\D/g, '');
+  const achar = it => (it.ean && DB.produtos.find(p => so(p.ean) === it.ean)) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null;
+  const linhas = notas.flatMap((nota, ni) => nota.itens.map(it => linhaVendaXml(it, ni, nota, achar(it))));
+  const corpo = `<div class="info"><b>${plural(notas.length, 'nota lida', 'notas lidas')}</b> · ${plural(linhas.length, 'item', 'itens')}. Confira, ajuste o que precisar e desmarque o que não quer lançar. Linhas em vermelho não têm produto correspondente.${falhas.length ? `<br>Arquivos ignorados (não são NF-e): ${falhas.map(esc).join(', ')}` : ''}</div>
+  <div class="form-grid"><div class="f full"><span class="lbl">Canal</span><div class="seg"><label><input type="radio" name="vx-canal" value="ml" checked><span>Mercado Livre</span></label><label><input type="radio" name="vx-canal" value="fisica"><span>Venda física (cliente = destinatário da nota)</span></label></div></div></div>
+  <div class="lines"><table><thead><tr><th></th><th>NF</th><th>Produto</th><th class="num">Disp.</th><th>Qtd</th><th>Venda un.</th><th>Taxa ML %</th><th>Frete un.</th></tr></thead><tbody id="vx-linhas">${linhas.join('')}</tbody></table></div>
+  <p class="hint">A data de cada venda é a data de emissão da nota. As unidades saem do estoque pela validade mais próxima. Na venda física, taxa e frete são zerados.</p>
+  ${datalistProdutos('dl-vx', true)}`;
+  abrirModal({
+    titulo: 'Lançar vendas por XML', corpo, largura: 1200, rodape: rodapePadrao('Lançar vendas'), dados: { notas },
+    onConfirm: () => {
+      const fisica = $('input[name=vx-canal]:checked').value === 'fisica';
+      const itens = [], uso = {};
+      for (const [k, tr] of $$('#vx-linhas .vx-linha').entries()) {
+        if (!tr.querySelector('.vx-inc').checked) continue;
+        const prod = produtoPorLabel(tr.querySelector('.vx-prod').value);
+        if (!prod) return erro(`Linha ${k + 1}: escolha o produto da lista ou desmarque a linha.`);
+        const qtd = parseInt(tr.querySelector('.vx-qtd').value, 10);
+        if (!(qtd >= 1)) return erro(`Linha ${k + 1}: quantidade inválida.`);
+        const [venda, taxa, frete] = ['.vx-venda', '.vx-taxa', '.vx-frete'].map(c => parseNum(tr.querySelector(c).value));
+        if ([venda, taxa, frete].some(Number.isNaN)) return erro(`Linha ${k + 1}: confira os valores.`);
+        uso[prod.id] = (uso[prod.id] || 0) + qtd;
+        if (uso[prod.id] > unidadesDisponiveis(prod.id).length) return erro(`${prod.nome}: só há ${plural(unidadesDisponiveis(prod.id).length, 'unidade disponível', 'unidades disponíveis')}, e as notas pedem ${uso[prod.id]}.`);
+        itens.push({ prod, qtd, venda, taxa: taxa == null ? null : taxa / 100, frete, nota: MODAL.notas[+tr.dataset.n] });
+      }
+      if (!itens.length) return erro('Nenhum item marcado para lançar.');
+      let total = 0;
+      for (const x of itens) {
+        const vf = fisica ? obterVendaFisica(x.nota.cliente || 'Cliente sem nome', x.nota.data || hojeISO()) : null;
+        const us = unidadesDisponiveis(x.prod.id).slice(0, x.qtd);
+        venderUnidades(us, { venda: x.venda, taxa: x.taxa, frete: x.frete, data: x.nota.data || hojeISO(), vendaFisica: vf });
+        us.forEach(u => { u.nfVenda = x.nota.chave || null; });
+        total += us.length;
+      }
+      commit(`${plural(total, 'unidade vendida', 'unidades vendidas')} a partir de ${plural(new Set(itens.map(x => x.nota)).size, 'nota', 'notas')}`);
+    },
+  });
+}
+
+/* ---------- Devolução ---------- */
+function modalDevolver(lote) {
+  const P = mapaProdutos(), n = lote.ids.length;
+  const ids = new Set(lote.ids);
+  const aplicar = qtd => {
+    const us = DB.estoque.filter(i => ids.has(i.id) && i.status === 'vendido').slice(0, qtd);
+    devolverUnidades(us);
+    commit(`${plural(us.length, 'unidade voltou', 'unidades voltaram')} para o estoque`);
+  };
+  if (n === 1) {
+    confirmar('Registrar devolução', `<b>${esc(P[lote.it.produto]?.nome || 'Item')}</b> volta para o estoque como "À venda". A data de venda e o vínculo com venda física são removidos.`, () => aplicar(1), { texto: 'Confirmar devolução' });
+    return;
+  }
+  abrirModal({
+    titulo: 'Registrar devolução', largura: 480,
+    corpo: `<div class="info"><b>${esc(P[lote.it.produto]?.nome || 'Item')}</b><br>${n} unidades neste lote vendido em ${fdata(lote.it.dVenda)}</div><div class="form-grid">${campo('dv-qtd', 'Quantas unidades voltam para o estoque?', `<input id="dv-qtd" type="number" min="1" max="${n}" value="1">`)}</div>`,
+    rodape: rodapePadrao('Confirmar devolução'),
+    onConfirm: () => {
+      const q = parseInt(val('dv-qtd'), 10);
+      if (!(q >= 1 && q <= n)) return erro(`Informe um número entre 1 e ${n}.`);
+      aplicar(q);
+    },
+  });
+}
+
+/* ---------- Editar lote / unidade ---------- */
+function modalLote(lote) {
+  const i = lote.it, P = mapaProdutos(), n = lote.ids.length;
+  const vfs = DB.vendasFisicas.slice().sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+  const corpo = `<div class="info">${n > 1 ? `As alterações valem para as <b>${n} unidades</b> deste lote.` : 'Editando 1 unidade.'}</div>
+  <div class="form-grid">${campo('ml-prod', 'Produto', `<input id="ml-prod" list="dl-ml" value="${esc(P[i.produto] ? labelProduto(P[i.produto]) : '')}" autocomplete="off">${datalistProdutos('dl-ml', false)}`, 'full')}</div>
+  <div class="form-grid">
+    ${campo('ml-status', 'Status', `<select id="ml-status"><option value="avenda" ${i.status === 'avenda' ? 'selected' : ''}>À venda</option><option value="vendido" ${i.status === 'vendido' ? 'selected' : ''}>Vendido</option></select>`)}
+    ${campo('ml-dvenda', 'Data da venda', inputData('ml-dvenda', i.dVenda))}
+    ${campo('ml-vf', 'Venda física', `<select id="ml-vf"><option value="">— Nenhuma (Mercado Livre) —</option>${vfs.map(v => `<option value="${v.id}" ${v.id === i.vendaFisica ? 'selected' : ''}>${esc(v.pessoa)}</option>`).join('')}</select>`)}
+  </div>
+  <div class="form-grid">
+    ${campo('ml-custo', 'Custo', inputNum('ml-custo', i.custo))}
+    ${campo('ml-venda', 'V. Venda', inputNum('ml-venda', i.venda))}
+    ${campo('ml-taxa', 'Taxa ML (%)', inputNum('ml-taxa', i.taxa != null ? i.taxa * 100 : null))}
+    ${campo('ml-frete', 'Frete', inputNum('ml-frete', i.frete))}
+  </div>
+  <div class="form-grid">
+    ${campo('ml-forn', 'Fornecedor', `<input id="ml-forn" list="dl-forn" value="${esc(i.fornecedor || '')}" autocomplete="off">${datalistLista('dl-forn', DB.config.fornecedores)}`)}
+    ${campo('ml-nf', 'NF', inputTxt('ml-nf', i.nf))}
+    ${campo('ml-dcompra', 'Data de compra', inputData('ml-dcompra', i.dCompra))}
+    ${campo('ml-val', 'Validade', inputData('ml-val', i.validade))}
+  </div>
+  <div class="form-grid">
+    ${campo('ml-lote', 'Lote (da NF)', inputTxt('ml-lote', i.lote))}
+  </div>
+  <p class="hint" style="margin:0">Lucro atual por unidade: <b>${brl(lucro(i))}</b> · margem ${pct(margem(i))}</p>`;
+  abrirModal({
+    titulo: n > 1 ? `Editar lote (${n} unidades)` : 'Editar unidade', corpo, largura: 760,
+    rodape: rodapePadrao('Salvar', `<button class="btn btn-sm btn-danger left" data-action="excluirLote">Excluir ${n > 1 ? 'lote' : 'unidade'}</button>`),
+    dados: { lote },
+    onConfirm: () => {
+      const prod = produtoPorLabel(val('ml-prod'));
+      if (!prod) return erro('Escolha um produto da lista.');
+      const nums = lerNums({ custo: 'ml-custo', venda: 'ml-venda', taxa: 'ml-taxa', frete: 'ml-frete' });
+      if (!nums) return erro('Confira os valores digitados.');
+      const status = val('ml-status');
+      const ids = new Set(lote.ids);
+      const forn = val('ml-forn') || null;
+      adicionarNaLista('fornecedores', forn);
+      for (const u of DB.estoque) {
+        if (!ids.has(u.id)) continue;
+        Object.assign(u, {
+          produto: prod.id, custo: nums.custo, venda: nums.venda, taxa: nums.taxa == null ? null : nums.taxa / 100, frete: nums.frete,
+          status, unid: status === 'vendido' ? 0 : 1,
+          dVenda: status === 'vendido' ? (val('ml-dvenda') || hojeISO()) : null,
+          vendaFisica: status === 'vendido' ? (val('ml-vf') || null) : null,
+          fornecedor: forn, nf: val('ml-nf') || null, dCompra: val('ml-dcompra') || null, validade: val('ml-val') || null, lote: val('ml-lote') || null,
+        });
+      }
+      commit('Alterações salvas');
+    },
+  });
+}
+
+/* ---------- Registrar compra ---------- */
+function linhaCompra(p = null) {
+  return `<tr class="mc-linha"><td class="w-prod"><input class="mc-prod" list="dl-mc" value="${p ? esc(labelProduto(p)) : ''}" placeholder="Produto" autocomplete="off" aria-label="Produto"></td>
+  <td><input class="mc-qtd" type="number" min="1" value="1" aria-label="Quantidade"></td>
+  <td><input class="mc-custo" inputmode="decimal" placeholder="0,00" aria-label="Custo unitário"></td>
+  <td><input class="mc-venda" inputmode="decimal" placeholder="0,00" aria-label="Valor de venda"></td>
+  <td><input class="mc-taxa" inputmode="decimal" value="${fmtIn(DB.config.taxaPadrao * 100)}" aria-label="Taxa ML %"></td>
+  <td><input class="mc-frete" inputmode="decimal" placeholder="0,00" aria-label="Frete"></td>
+  <td class="num mc-mrs faint">—</td><td class="num mc-mpc faint">—</td>
+  <td><input class="mc-lote" placeholder="Lote" aria-label="Lote" style="min-width:90px"></td>
+  <td><input class="mc-val" type="date" aria-label="Validade" style="min-width:140px"></td>
+  <td><button class="ghost-ic" data-action="removerLinha" aria-label="Remover linha">${ic('x', 16)}</button></td></tr>`;
+}
+/* margem da linha = venda − taxa ML − frete − custo (mesma fórmula do lucro das vendas) */
+function atualizarMargemCompra(tr) {
+  const [custo, venda, taxa, frete] = ['.mc-custo', '.mc-venda', '.mc-taxa', '.mc-frete'].map(c => parseNum(tr.querySelector(c).value));
+  const ok = [custo, venda, taxa, frete].every(x => !Number.isNaN(x)) && venda;
+  const i = ok ? { custo, venda, taxa: (taxa || 0) / 100, frete } : null;
+  const l = i ? lucro(i) : null;
+  const marca = (cls, txt) => { const td = tr.querySelector(cls); td.textContent = txt; td.className = `num ${cls.slice(1)} ${l == null ? 'faint' : l < 0 ? 'neg' : ''}`; };
+  marca('.mc-mrs', l == null ? '—' : brl(l));
+  marca('.mc-mpc', l == null ? '—' : pct(margem(i)));
+}
+function preencherLinhaCompra(tr) {
+  const p = produtoPorLabel(tr.querySelector('.mc-prod').value);
+  if (!p) return;
+  const ult = DB.estoque.filter(i => i.produto === p.id).sort((a, b) => (b.dCompra || '').localeCompare(a.dCompra || ''))[0];
+  if (!ult) return;
+  const set = (cls, v) => { const el = tr.querySelector(cls); if (el && !el.value) el.value = fmtIn(v); };
+  set('.mc-custo', ult.custo);
+  set('.mc-venda', ult.venda);
+  set('.mc-frete', ult.frete);
+}
+/* Lê o XML da NF-e (nfeProc ou NFe): fornecedor, número, data e itens com custo unitário
+   (produtos + frete + seguro + outras despesas − desconto, dividido pela quantidade). */
+function lerNFe(texto) {
+  const doc = new DOMParser().parseFromString(texto, 'application/xml');
+  const inf = doc.getElementsByTagNameNS('*', 'infNFe')[0];
+  if (doc.querySelector('parsererror') || !inf) return null;
+  const t = (el, tag) => el?.getElementsByTagNameNS('*', tag)[0]?.textContent.trim() || '';
+  const n = (el, tag) => parseFloat(t(el, tag)) || 0;
+  const ide = inf.getElementsByTagNameNS('*', 'ide')[0], emit = inf.getElementsByTagNameNS('*', 'emit')[0];
+  const itens = [...inf.getElementsByTagNameNS('*', 'det')].flatMap(det => {
+    const pr = det.getElementsByTagNameNS('*', 'prod')[0];
+    const qtd = n(pr, 'qCom') || 1;
+    const total = n(pr, 'vProd') + n(pr, 'vFrete') + n(pr, 'vSeg') + n(pr, 'vOutro') - n(pr, 'vDesc');
+    const ean = [t(pr, 'cEAN'), t(pr, 'cEANTrib')].find(x => /^\d{8,14}$/.test(x)) || '';
+    const base = { nome: t(pr, 'xProd'), ean, ncm: t(pr, 'NCM'), custo: total / qtd, valorUn: (n(pr, 'vProd') - n(pr, 'vDesc')) / qtd };
+    // rastreabilidade (<rastro>): número do lote e validade; uma nota pode ter vários lotes no mesmo item
+    const rastros = [...det.getElementsByTagNameNS('*', 'rastro')].map(r => ({ lote: t(r, 'nLote') || null, q: n(r, 'qLote'), validade: t(r, 'dVal') || null }));
+    if (rastros.length > 1 && Math.abs(rastros.reduce((a, r) => a + r.q, 0) - qtd) < 0.5) {
+      return rastros.map(r => ({ ...base, qtd: Math.max(1, Math.round(r.q)), lote: r.lote, validade: r.validade || t(det, 'dVal') || null }));
+    }
+    const r0 = rastros[0];
+    return [{ ...base, qtd: Math.max(1, Math.round(qtd)), lote: r0?.lote || null, validade: r0?.validade || t(det, 'dVal') || null }];
+  });
+  const dest = inf.getElementsByTagNameNS('*', 'dest')[0];
+  return { chave: (inf.getAttribute('Id') || '').replace(/^NFe/, ''), cliente: t(dest, 'xNome'), fornecedor: t(emit, 'xNome'), nf: t(ide, 'nNF'), data: (t(ide, 'dhEmi') || t(ide, 'dEmi')).slice(0, 10), itens };
+}
+function importarNFe(texto) {
+  const nfe = lerNFe(texto);
+  if (!nfe || !nfe.itens.length) return erro('Este arquivo não parece o XML de uma NF-e.');
+  const so = x => String(x || '').replace(/\D/g, '');
+  const achar = it => (it.ean && DB.produtos.find(p => so(p.ean) === it.ean)) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null;
+  const forn = DB.config.fornecedores.find(f => norm(nfe.fornecedor).includes(norm(f)) || norm(f).includes(norm(nfe.fornecedor))) || nfe.fornecedor;
+  $('#mc-forn').value = forn;
+  $('#mc-nf').value = nfe.nf;
+  if (nfe.data) $('#mc-data').value = nfe.data;
+  const sem = [];
+  $('#mc-linhas').innerHTML = nfe.itens.map(() => linhaCompra()).join('');
+  nfe.itens.forEach((it, i) => {
+    const tr = $('#mc-linhas').children[i], prod = achar(it);
+    tr.querySelector('.mc-qtd').value = it.qtd;
+    tr.querySelector('.mc-custo').value = fmtIn(Math.round(it.custo * 100) / 100);
+    if (it.validade) tr.querySelector('.mc-val').value = it.validade;
+    if (it.lote) tr.querySelector('.mc-lote').value = it.lote;
+    if (prod) { tr.querySelector('.mc-prod').value = labelProduto(prod); preencherLinhaCompra(tr); }
+    else { tr.classList.add('mc-pend'); tr.querySelector('.mc-prod').placeholder = it.nome; sem.push(it); }
+  });
+  const jaLancada = nfe.nf && DB.estoque.some(i => i.nf === nfe.nf && norm(i.fornecedor) === norm(forn));
+  $('#mc-aviso').innerHTML =
+    (jaLancada ? `<div class="info" style="background:var(--yel-bg);color:#5c4700">Atenção: já existe uma compra com a NF ${esc(nfe.nf)} deste fornecedor. Confira para não lançar em duplicidade.</div>` : '') +
+    (sem.length ? `<div class="info"><b>${plural(sem.length, 'item sem produto correspondente', 'itens sem produto correspondente')}</b> (linhas em vermelho). Escolha o produto na lista ou cadastre em Produtos → Novo produto e importe de novo:<br>${sem.map(it => `• ${esc(it.nome)}${it.ean ? ` · EAN ${it.ean}` : ''}${it.ncm ? ` · NCM ${it.ncm}` : ''}`).join('<br>')}</div>` : '');
+  $$('#mc-linhas .mc-linha').forEach(atualizarMargemCompra);
+  toast(`NF ${nfe.nf || ''} lida: ${plural(nfe.itens.length, 'item', 'itens')}${sem.length ? `, ${sem.length} sem produto` : ''}. Confira e lance.`);
+}
+/* ---------- Conferir várias NF-e de compra de uma vez ---------- */
+const nfNum = x => String(x || '').replace(/\D/g, '').replace(/^0+/, '');
+const mesmoForn = (a, b) => { a = norm(a); b = norm(b); return !!a && !!b && (a.includes(b) || b.includes(a)); };
+
+function analisarNotasCompra(arquivos) {
+  const vistas = new Set(), notas = [], invalidos = [];
+  const so = x => String(x || '').replace(/\D/g, '');
+  for (const a of arquivos) {
+    const nfe = lerNFe(a.texto);
+    if (!nfe || !nfe.itens.length) { invalidos.push(a.nome); continue; }
+    const id = nfe.chave || `${nfe.fornecedor}|${nfe.nf}`;
+    if (vistas.has(id)) continue;
+    vistas.add(id);
+    const forn = DB.config.fornecedores.find(f => mesmoForn(nfe.fornecedor, f)) || nfe.fornecedor;
+    const itens = nfe.itens.map(it => ({ ...it, prod: (it.ean && DB.produtos.find(p => so(p.ean) === it.ean)) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null }));
+    const total = itens.reduce((t, i) => t + i.qtd, 0);
+    const doMesmoNf = DB.estoque.filter(u => (nfe.chave && u.nfCompra === nfe.chave) || (nfNum(u.nf) && nfNum(u.nf) === nfNum(nfe.nf) && mesmoForn(u.fornecedor, forn)));
+    const outroForn = !doMesmoNf.length && nfNum(nfe.nf) && DB.estoque.some(u => nfNum(u.nf) === nfNum(nfe.nf));
+    const semProd = itens.filter(i => !i.prod);
+    let estado = 'faltando';
+    if (doMesmoNf.length >= total) estado = 'lancada';
+    else if (doMesmoNf.length) estado = 'parcial';
+    else if (outroForn) estado = 'talvez';
+    else if (semProd.length) estado = 'semprod';
+    notas.push({ nfe, forn, itens, total, lancadas: doMesmoNf.length, semProd, estado, valor: itens.reduce((t, i) => t + i.custo * i.qtd, 0) });
+  }
+  notas.sort((a, b) => (a.nfe.data || '').localeCompare(b.nfe.data || ''));
+  return { notas, invalidos };
+}
+
+const NOTA_ESTADOS = {
+  lancada: ['c-green', 'Já lançada', false],
+  parcial: ['c-orange', 'Lançada pela metade: revise à mão', false],
+  talvez: ['c-orange', 'Mesmo nº de NF em outro fornecedor: revise', false],
+  semprod: ['c-red', 'Falta cadastrar produto', false],
+  faltando: ['c-yellow', 'Não lançada', true],
+};
+
+/* Cadastro guiado dos produtos de NF-e que não existem no site: um por vez, com confirmação de cada um. */
+const acharProdutoXml = it => (it.ean && DB.produtos.find(p => String(p.ean || '').replace(/\D/g, '') === it.ean)) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null;
+
+function abrirCadastroXml(f) {
+  while (f.i < f.fila.length && acharProdutoXml(f.fila[f.i])) f.i++;   // já cadastrado por fora
+  if (f.i >= f.fila.length) { fecharModal(); modalNotasCompra(f.arquivos); return; }
+  const it = f.fila[f.i];
+  const skuSug = Math.max(0, ...DB.produtos.map(x => x.sku || 0)) + 1;
+  const fabSug = DB.config.fabricantes.find(x => norm(it.nome).includes(norm(x))) || '';
+  const corpo = `<div class="info">Produto <b>${f.i + 1} de ${f.fila.length}</b> que está na nota e ainda não existe no site. Confira os dados e confirme.</div>
+  <div class="form-grid" style="margin-top:12px">${campo('pr-nome', 'Nome', inputTxt('pr-nome', it.nome), 'full')}</div>
+  <div class="form-grid">
+    ${campo('pr-sku', 'SKU', `<input id="pr-sku" type="number" value="${skuSug}">`)}
+    ${campo('pr-fab', 'Fabricante', `<input id="pr-fab" list="dl-fab" value="${esc(fabSug)}" autocomplete="off">${datalistLista('dl-fab', DB.config.fabricantes)}`)}
+  </div>
+  <div class="form-grid"><div class="f full"><span class="lbl">Categorias</span><div class="chips" style="gap:8px">${DB.config.tipos.map(t => `<label class="check" style="background:#f6f6f9;padding:6px 10px;border-radius:8px"><input type="checkbox" class="pr-tipo" value="${esc(t)}"> ${esc(t)}</label>`).join('')}</div></div></div>
+  <div class="form-grid">${campo('pr-ncm', 'NCM', inputTxt('pr-ncm', it.ncm))}${campo('pr-ean', 'EAN', inputTxt('pr-ean', it.ean))}</div>`;
+  abrirModal({
+    titulo: 'Cadastrar produto da nota', corpo, largura: 680, dados: { fluxo: f },
+    rodape: `<button class="btn btn-soft" data-action="fecharModal">Parar aqui</button><button class="btn btn-soft" data-action="pularCadastro">Pular este</button><button class="btn btn-dark" data-action="confirmarModal">Cadastrar e continuar</button>`,
+    onConfirm: () => {
+      const nome = val('pr-nome');
+      if (!nome) return erro('Informe o nome do produto.');
+      const dados = { nome, sku: num(val('pr-sku')), fabricante: val('pr-fab') || null, tipos: $$('.pr-tipo:checked').map(x => x.value), ncm: val('pr-ncm'), ean: val('pr-ean') };
+      adicionarNaLista('fabricantes', dados.fabricante);
+      DB.produtos.push({ id: uid(), ...dados });
+      salvar(); toast('Produto cadastrado');
+      f.i++; abrirCadastroXml(f);
+      return false;
+    },
+  });
+}
+
+function modalNotasCompra(arquivos) {
+  const { notas, invalidos } = analisarNotasCompra(arquivos);
+  const cont = e => notas.filter(n => n.estado === e).length;
+  const sem = notas.filter(n => n.semProd.length);
+  const faltantes = [...new Map(notas.filter(n => n.estado !== 'lancada').flatMap(n => n.semProd).map(i => [i.ean || norm(i.nome), i])).values()];
+  const corpo = `<div class="info">${plural(notas.length, 'nota', 'notas')} lidas: <b>${cont('lancada')} já lançadas</b>, <b>${cont('faltando')} não lançadas</b>, ${cont('semprod')} com produto sem cadastro, ${cont('parcial') + cont('talvez')} para revisar.${invalidos.length ? `<br>Não pareciam XML de NF-e: ${esc(invalidos.join(', '))}` : ''}<br>
+    <span class="hint">As não lançadas entram no estoque com o custo da nota (frete e desconto já rateados). Venda, taxa e frete vêm da última compra do mesmo produto, e a taxa padrão se não houver. Baixe um backup antes de aplicar.</span></div>
+  <div class="table-wrap livre" style="margin-top:12px;max-height:46vh;overflow:auto"><table><thead><tr><th></th><th>Data</th><th>NF</th><th>Fornecedor</th><th class="num">Unid.</th><th class="num">Total</th><th>Situação</th></tr></thead><tbody>
+  ${notas.map((n, k) => { const [cor, txt, marcavel] = NOTA_ESTADOS[n.estado];
+    return `<tr><td><input type="checkbox" class="nc-inc" data-k="${k}" ${marcavel ? 'checked' : 'disabled'} aria-label="Lançar"></td><td>${fdata(n.nfe.data)}</td><td>${esc(n.nfe.nf || '—')}</td><td>${esc(n.forn)}</td><td class="num">${n.estado === 'parcial' ? `${n.lancadas}/${n.total}` : n.total}</td><td class="num">${brl(n.valor)}</td><td><span class="chip ${cor}">${txt}</span></td></tr>`; }).join('') || vazioLinha(7, 'Nenhuma nota válida.')}
+  </tbody></table></div>
+  ${sem.length ? `<div class="info" style="margin-top:12px"><b>Produtos sem cadastro</b> (cadastre em Produtos → Novo produto e rode a conferência de novo):<br>${[...new Map(sem.flatMap(n => n.semProd).map(i => [i.ean || i.nome, i])).values()].map(i => `• ${esc(i.nome)}${i.ean ? ` · EAN ${i.ean}` : ''}${i.ncm ? ` · NCM ${i.ncm}` : ''}`).join('<br>')}</div>` : ''}`;
+  abrirModal({
+    titulo: 'Conferir notas de compra', corpo, largura: 980,
+    rodape: rodapePadrao('Lançar marcadas', faltantes.length ? `<button class="btn btn-sm btn-soft left" data-action="cadastrarFaltantes">${ic('plus', 16)} Cadastrar ${plural(faltantes.length, 'produto que falta', 'produtos que faltam')}</button>` : ''),
+    dados: { notasCompra: notas, arquivosCompra: arquivos, faltantes },
+    onConfirm: () => {
+      const marcadas = $$('.nc-inc:checked').map(c => MODAL.notasCompra[+c.dataset.k]);
+      let un = 0;
+      for (const n of marcadas) {
+        adicionarNaLista('fornecedores', n.forn);
+        for (const it of n.itens) {
+          const ult = DB.estoque.filter(i => i.produto === it.prod.id).sort((a, b) => (b.dCompra || '').localeCompare(a.dCompra || ''))[0];
+          for (let j = 0; j < it.qtd; j++) {
+            DB.estoque.push({ id: uid(), produto: it.prod.id, custo: Math.round(it.custo * 100) / 100, venda: ult?.venda ?? null, taxa: ult?.taxa ?? DB.config.taxaPadrao, frete: ult?.frete ?? null,
+              status: 'avenda', unid: 1, dVenda: null, validade: it.validade, lote: it.lote || null, fornecedor: n.forn, nf: n.nfe.nf || null, nfCompra: n.nfe.chave || null, vendaFisica: null, dCompra: n.nfe.data || hojeISO() });
+            un++;
+          }
+        }
+      }
+      commit(`${plural(marcadas.length, 'nota lançada', 'notas lançadas')}: ${plural(un, 'unidade', 'unidades')} no estoque`);
+    },
+  });
+}
+
+function modalCompra({ produtoId = null, fornecedor = '', nf = '', data = '' } = {}) {
+  const P = mapaProdutos();
+  const p = produtoId ? P[produtoId] : null;
+  const corpo = `<div class="form-grid">
+    ${campo('mc-forn', 'Fornecedor', `<input id="mc-forn" list="dl-forn" value="${esc(fornecedor)}" autocomplete="off">${datalistLista('dl-forn', DB.config.fornecedores)}`)}
+    ${campo('mc-nf', 'Nota fiscal', inputTxt('mc-nf', nf))}
+    ${campo('mc-data', 'Data da compra', inputData('mc-data', data || hojeISO()))}
+  </div>
+  <div class="lines"><table><thead><tr><th>Produto</th><th>Qtd</th><th>Custo un.</th><th>Venda un.</th><th>Taxa ML %</th><th>Frete un.</th><th class="num">Margem R$</th><th class="num">Margem %</th><th>Lote</th><th>Validade</th><th></th></tr></thead><tbody id="mc-linhas">${linhaCompra(p)}</tbody></table></div>
+  <div id="mc-aviso"></div>
+  <button class="btn btn-sm btn-soft" data-action="addLinhaCompra">${ic('plus', 16)} Adicionar produto</button>
+  <p class="hint">Ao escolher um produto, custo, venda e frete são preenchidos com os valores da última compra. Produto novo? Cadastre antes em Produtos → Novo produto.</p>
+  ${datalistProdutos('dl-mc', false)}`;
+  abrirModal({
+    titulo: 'Registrar compra', corpo, largura: 1200,
+    rodape: rodapePadrao('Lançar no estoque', `<button class="btn btn-sm btn-soft left" data-action="escolherXml">${ic('plus', 16)} Importar XML da NF-e</button><input type="file" id="arquivo-nfe" accept=".xml,text/xml,application/xml" hidden>`),
+    onConfirm: () => {
+      const linhas = $$('#mc-linhas .mc-linha');
+      const novos = [];
+      for (const [k, tr] of linhas.entries()) {
+        const txt = tr.querySelector('.mc-prod').value.trim();
+        if (!txt) continue;
+        const prod = produtoPorLabel(txt);
+        if (!prod) return erro(`Linha ${k + 1}: produto não encontrado. Escolha da lista.`);
+        const qtd = parseInt(tr.querySelector('.mc-qtd').value, 10);
+        if (!(qtd >= 1)) return erro(`Linha ${k + 1}: quantidade inválida.`);
+        const nums = ['.mc-custo', '.mc-venda', '.mc-taxa', '.mc-frete'].map(c => parseNum(tr.querySelector(c).value));
+        if (nums.some(Number.isNaN)) return erro(`Linha ${k + 1}: confira os valores.`);
+        novos.push({ prod, qtd, custo: nums[0], venda: nums[1], taxa: nums[2] == null ? null : nums[2] / 100, frete: nums[3], validade: tr.querySelector('.mc-val').value || null, lote: tr.querySelector('.mc-lote').value.trim() || null });
+      }
+      if (!novos.length) return erro('Adicione pelo menos um produto.');
+      const forn = val('mc-forn') || null, nfv = val('mc-nf') || null, dc = val('mc-data') || hojeISO();
+      adicionarNaLista('fornecedores', forn);
+      let total = 0;
+      for (const x of novos) {
+        for (let j = 0; j < x.qtd; j++) {
+          DB.estoque.push({ id: uid(), produto: x.prod.id, custo: x.custo, venda: x.venda, taxa: x.taxa, frete: x.frete, status: 'avenda', unid: 1, dVenda: null, validade: x.validade, lote: x.lote, fornecedor: forn, nf: nfv, vendaFisica: null, dCompra: dc });
+          total++;
+        }
+      }
+      commit(`${plural(total, 'unidade lançada', 'unidades lançadas')} no estoque`);
+    },
+  });
+}
+
+/* ---------- Editar compra (NF inteira) ---------- */
+function modalEditarCompra(chave) {
+  const g = comprasAgrupadas().find(x => x.chave === chave);
+  if (!g) return;
+  const corpo = `<div class="info">Alterações valem para as <b>${g.itens.length} unidades</b> desta compra (${g.vendidos} já vendidas).</div>
+  <div class="form-grid">
+    ${campo('ec-forn', 'Fornecedor', `<input id="ec-forn" list="dl-forn" value="${esc(g.fornecedor || '')}" autocomplete="off">${datalistLista('dl-forn', DB.config.fornecedores)}`)}
+    ${campo('ec-nf', 'Nota fiscal', inputTxt('ec-nf', g.nf))}
+    ${campo('ec-data', 'Data da compra', inputData('ec-data', g.dIni))}
+  </div>
+  ${g.dIni !== g.dFim ? '<p class="hint">Hoje as unidades desta NF têm datas de compra diferentes. Ao salvar, todas ficam com a data acima.</p>' : ''}`;
+  abrirModal({
+    titulo: `Editar compra · NF ${esc(g.nf || 'sem número')}`, corpo, largura: 640,
+    rodape: rodapePadrao('Salvar', `<button class="btn btn-sm btn-soft left" data-action="addNaCompra" data-chave="${esc(chave)}">${ic('plus', 16)} Adicionar itens a esta NF</button>`),
+    onConfirm: () => {
+      const forn = val('ec-forn') || null, nfv = val('ec-nf') || null, dc = val('ec-data') || null;
+      adicionarNaLista('fornecedores', forn);
+      for (const u of g.itens) { u.fornecedor = forn; u.nf = nfv; u.dCompra = dc; }
+      const nova = `${nfv || ''}¦${forn || ''}`;
+      if (UI.compras.abertas[chave]) { delete UI.compras.abertas[chave]; UI.compras.abertas[nova] = true; }
+      commit('Compra atualizada');
+    },
+  });
+}
+
+/* ---------- Produto ---------- */
+function modalProduto(id = null) {
+  const p = id ? DB.produtos.find(x => x.id === id) : { nome: '', sku: null, fabricante: '', tipos: [], ncm: '', ean: '' };
+  if (!p) return;
+  const st = id ? statsProdutos()[id] : null;
+  const skuSug = Math.max(0, ...DB.produtos.map(x => x.sku || 0)) + 1;
+  const corpo = `<div class="form-grid">${campo('pr-nome', 'Nome', inputTxt('pr-nome', p.nome), 'full')}</div>
+  <div class="form-grid">
+    ${campo('pr-sku', 'SKU', `<input id="pr-sku" type="number" value="${p.sku ?? (id ? '' : skuSug)}">`)}
+    ${campo('pr-fab', 'Fabricante', `<input id="pr-fab" list="dl-fab" value="${esc(p.fabricante || '')}" autocomplete="off">${datalistLista('dl-fab', DB.config.fabricantes)}`)}
+  </div>
+  <div class="form-grid"><div class="f full"><span class="lbl">Categorias</span><div class="chips" style="gap:8px">${DB.config.tipos.map(t => `<label class="check" style="background:#f6f6f9;padding:6px 10px;border-radius:8px"><input type="checkbox" class="pr-tipo" value="${esc(t)}" ${(p.tipos || []).includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('')}</div></div></div>
+  <div class="form-grid">${campo('pr-ncm', 'NCM', inputTxt('pr-ncm', p.ncm))}${campo('pr-ean', 'EAN', inputTxt('pr-ean', p.ean))}</div>
+  ${st ? `<div class="stat-row"><div class="stat"><span>Disponível</span><b>${st.disp}</b></div><div class="stat"><span>Vendidos</span><b>${st.vend}</b></div><div class="stat"><span>Custo médio</span><b>${brl(st.cc ? st.sc / st.cc : null)}</b></div><div class="stat"><span>Margem média</span><b>${pct(st.cm ? st.sm / st.cm : null)}</b></div></div>` : ''}`;
+  const esquerda = id ? (st.n ? `<span class="hint left">Tem ${st.n} unidades no histórico, por isso não pode ser excluído</span>` : `<button class="btn btn-sm btn-danger left" data-action="excluirProduto" data-id="${id}">Excluir produto</button>`) : '';
+  abrirModal({
+    titulo: id ? 'Editar produto' : 'Novo produto', corpo, largura: 680, rodape: rodapePadrao('Salvar', esquerda),
+    onConfirm: () => {
+      const nome = val('pr-nome');
+      if (!nome) return erro('Informe o nome do produto.');
+      const dados = { nome, sku: num(val('pr-sku')), fabricante: val('pr-fab') || null, tipos: $$('.pr-tipo:checked').map(x => x.value), ncm: val('pr-ncm'), ean: val('pr-ean') };
+      adicionarNaLista('fabricantes', dados.fabricante);
+      if (id) Object.assign(p, dados);
+      else DB.produtos.push({ id: uid(), ...dados });
+      commit(id ? 'Produto atualizado' : 'Produto cadastrado');
+    },
+  });
+}
+
+/* ---------- Venda física ---------- */
+function linhaFisica() {
+  return `<tr class="vf-linha"><td class="w-prod"><input class="vf-prod" list="dl-vf" placeholder="Produto" autocomplete="off" aria-label="Produto"></td>
+  <td><input class="vf-qtd" type="number" min="1" value="1" aria-label="Quantidade"></td>
+  <td><input class="vf-preco" inputmode="decimal" placeholder="0,00" aria-label="Preço unitário"></td>
+  <td><button class="ghost-ic" data-action="removerLinha" aria-label="Remover linha">${ic('x', 16)}</button></td></tr>`;
+}
+function lerLinhasFisica(sel) {
+  const pedidos = [];
+  for (const [k, tr] of $$(sel).entries()) {
+    const txt = tr.querySelector('.vf-prod').value.trim();
+    if (!txt) continue;
+    const prod = produtoPorLabel(txt);
+    if (!prod) return erro(`Item ${k + 1}: produto não encontrado. Escolha da lista.`) || null;
+    const qtd = parseInt(tr.querySelector('.vf-qtd').value, 10);
+    if (!(qtd >= 1)) return erro(`Item ${k + 1}: quantidade inválida.`) || null;
+    const preco = parseNum(tr.querySelector('.vf-preco').value);
+    if (Number.isNaN(preco)) return erro(`Item ${k + 1}: confira o preço.`) || null;
+    pedidos.push({ prod, qtd, preco });
+  }
+  const precisa = {};
+  pedidos.forEach(x => { precisa[x.prod.id] = (precisa[x.prod.id] || 0) + x.qtd; });
+  for (const [pid, q] of Object.entries(precisa)) {
+    const d = unidadesDisponiveis(pid).length;
+    if (q > d) return erro(`${mapaProdutos()[pid].nome}: só há ${d} à venda.`) || null;
+  }
+  return pedidos;
+}
+function venderLinhasFisica(pedidos, vfId, data) {
+  for (const x of pedidos) venderUnidades(unidadesDisponiveis(x.prod.id).slice(0, x.qtd), { venda: x.preco, data, vendaFisica: vfId });
+}
+function preencherLinhaFisica(tr) {
+  const p = produtoPorLabel(tr.querySelector('.vf-prod').value);
+  const preco = tr.querySelector('.vf-preco');
+  if (!p || preco.value) return;
+  const u = unidadesDisponiveis(p.id)[0];
+  if (u) preco.value = fmtIn(u.venda);
+}
+function modalFisicaNova() {
+  const corpo = `<div class="form-grid">
+    ${campo('fn-pessoa', 'Cliente', `<input id="fn-pessoa" placeholder="Ex.: Pamela Setembro" autocomplete="off">`)}
+    ${campo('fn-data', 'Data', inputData('fn-data', hojeISO()))}
+    ${campo('fn-pago', 'Valor já pago', inputNum('fn-pago', null))}
+  </div>
+  <div class="sub-title">Itens</div>
+  <div class="lines"><table><thead><tr><th>Produto</th><th>Qtd</th><th>Preço un.</th><th></th></tr></thead><tbody id="fn-linhas">${linhaFisica()}</tbody></table></div>
+  <button class="btn btn-sm btn-soft" data-action="addLinhaFisica" data-alvo="fn-linhas">${ic('plus', 16)} Adicionar item</button>
+  <p class="hint">As unidades saem do estoque (validade mais próxima primeiro), com taxa ML e frete zerados.</p>
+  ${datalistProdutos('dl-vf', true)}`;
+  abrirModal({
+    titulo: 'Nova venda física', corpo, largura: 760, rodape: rodapePadrao('Registrar venda'),
+    onConfirm: () => {
+      const pessoa = val('fn-pessoa');
+      if (!pessoa) return erro('Informe o cliente.');
+      const pago = parseNum(val('fn-pago'));
+      if (Number.isNaN(pago)) return erro('Confira o valor pago.');
+      const pedidos = lerLinhasFisica('#fn-linhas .vf-linha');
+      if (!pedidos) return false;
+      const data = val('fn-data') || hojeISO();
+      const v = { id: uid(), pessoa, pago: pago || 0, data };
+      DB.vendasFisicas.push(v);
+      venderLinhasFisica(pedidos, v.id, data);
+      commit('Venda física registrada');
+    },
+  });
+}
+function modalFisica(id) {
+  const v = DB.vendasFisicas.find(x => x.id === id);
+  if (!v) return;
+  const P = mapaProdutos();
+  const itens = DB.estoque.filter(i => i.vendaFisica === id);
+  const venda = sum(itens, i => i.venda), custo = sum(itens, i => i.custo);
+  const status = statusPgto(v.pago, venda);
+  const grupos = {};
+  itens.forEach(i => { const k = `${i.produto}|${i.venda}|${i.dVenda}`; (grupos[k] = grupos[k] || { it: i, ids: [] }).ids.push(i.id); });
+  const corpo = `<div class="form-grid">
+    ${campo('fd-pessoa', 'Cliente', inputTxt('fd-pessoa', v.pessoa))}
+    ${campo('fd-data', 'Data', inputData('fd-data', v.data))}
+    ${campo('fd-pago', 'Valor pago', inputNum('fd-pago', v.pago))}
+  </div>
+  <div class="stat-row">
+    <div class="stat"><span>Valor da venda</span><b>${brl(venda)}</b></div>
+    <div class="stat"><span>Pago</span><b>${brl(v.pago)}</b></div>
+    <div class="stat"><span>Pendente</span><b class="${venda - v.pago > 0.005 ? 'neg' : ''}">${brl(Math.max(0, venda - (v.pago || 0)))}</b></div>
+    <div class="stat"><span>Status</span><b>${chip('pgto', status)}</b></div>
+    <div class="stat"><span>Lucro</span><b>${brl(venda - custo)}</b></div>
+  </div>
+  ${status !== 'Pago' ? `<div class="inline-form"><input id="fd-receber" inputmode="decimal" placeholder="Valor recebido" aria-label="Valor recebido"><button class="btn btn-sm btn-dark" data-action="receberFisica" data-id="${id}">Registrar pagamento</button><button class="btn btn-sm btn-soft" data-action="quitarFisica" data-id="${id}">Quitar tudo</button></div>` : ''}
+  <div class="sub-title">Itens vendidos (${itens.length})</div>
+  <div class="lines"><table><thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Preço un.</th><th class="num">Custo un.</th><th>Data</th><th></th></tr></thead><tbody>
+  ${Object.values(grupos).map(g => `<tr><td class="prod">${esc(P[g.it.produto]?.nome || '—')}</td><td class="num">${g.ids.length}</td><td class="num">${brl(g.it.venda)}</td><td class="num">${brl(g.it.custo)}</td><td class="muted">${fdata(g.it.dVenda)}</td><td><button class="btn btn-sm btn-soft" data-action="devolverFisica" data-id="${id}" data-uid="${g.ids[0]}">Devolver 1</button></td></tr>`).join('') || vazioLinha(6, 'Nenhum item vinculado.')}
+  </tbody></table></div>
+  <div class="sub-title">Adicionar itens</div>
+  <div class="lines"><table><thead><tr><th>Produto</th><th>Qtd</th><th>Preço un.</th><th></th></tr></thead><tbody id="fd-linhas">${linhaFisica()}</tbody></table></div>
+  <button class="btn btn-sm btn-soft" data-action="addLinhaFisica" data-alvo="fd-linhas">${ic('plus', 16)} Adicionar item</button>
+  ${datalistProdutos('dl-vf', true)}`;
+  abrirModal({
+    titulo: esc(v.pessoa), corpo, largura: 820,
+    rodape: rodapePadrao('Salvar', `<button class="btn btn-sm btn-danger left" data-action="excluirFisica" data-id="${id}">Excluir venda</button>`),
+    onConfirm: () => {
+      const pessoa = val('fd-pessoa');
+      if (!pessoa) return erro('Informe o cliente.');
+      const pago = parseNum(val('fd-pago'));
+      if (Number.isNaN(pago)) return erro('Confira o valor pago.');
+      const pedidos = lerLinhasFisica('#fd-linhas .vf-linha');
+      if (!pedidos) return false;
+      v.pessoa = pessoa; v.data = val('fd-data') || v.data; v.pago = pago || 0;
+      venderLinhasFisica(pedidos, v.id, v.data || hojeISO());
+      commit('Venda física atualizada');
+    },
+  });
+}
+
+/* ---------- Encomenda ---------- */
+function modalEncomenda(id = null) {
+  const e = id ? DB.encomendas.find(x => x.id === id) : { cliente: '', produto: '', qtd: 1, valor: null, sinal: null, dPedido: hojeISO(), previsao: '', status: 'Pendente', obs: '' };
+  if (!e) return;
+  const corpo = `<div class="form-grid">${campo('en-cliente', 'Cliente', inputTxt('en-cliente', e.cliente))}${campo('en-status', 'Status', `<select id="en-status">${STATUS_ENC.map(s => `<option ${s === e.status ? 'selected' : ''}>${s}</option>`).join('')}</select>`)}</div>
+  <div class="form-grid">${campo('en-prod', 'Produto', `<input id="en-prod" list="dl-en" value="${esc(e.produto)}" autocomplete="off" placeholder="Escolha da lista ou escreva">${datalistProdutos('dl-en', false)}`, 'full')}</div>
+  <div class="form-grid">${campo('en-qtd', 'Quantidade', `<input id="en-qtd" type="number" min="1" value="${e.qtd ?? 1}">`)}${campo('en-valor', 'Valor total', inputNum('en-valor', e.valor))}${campo('en-sinal', 'Sinal pago', inputNum('en-sinal', e.sinal))}</div>
+  <div class="form-grid">${campo('en-dped', 'Pedido em', inputData('en-dped', e.dPedido))}${campo('en-prev', 'Previsão de entrega', inputData('en-prev', e.previsao))}</div>
+  <div class="form-grid">${campo('en-obs', 'Observações', `<textarea id="en-obs" rows="3">${esc(e.obs || '')}</textarea>`, 'full')}</div>`;
+  abrirModal({
+    titulo: id ? 'Editar encomenda' : 'Nova encomenda', corpo, largura: 680,
+    rodape: rodapePadrao('Salvar', id ? `<button class="btn btn-sm btn-danger left" data-action="excluirEncomenda" data-id="${id}">Excluir</button>` : ''),
+    onConfirm: () => {
+      const cliente = val('en-cliente');
+      if (!cliente) return erro('Informe o cliente.');
+      const nums = lerNums({ valor: 'en-valor', sinal: 'en-sinal' });
+      if (!nums) return erro('Confira os valores.');
+      const dados = { cliente, produto: val('en-prod'), qtd: num(val('en-qtd')), valor: nums.valor, sinal: nums.sinal, dPedido: val('en-dped') || null, previsao: val('en-prev') || null, status: val('en-status'), obs: val('en-obs') };
+      if (id) Object.assign(e, dados); else DB.encomendas.push({ id: uid(), ...dados });
+      commit(id ? 'Encomenda atualizada' : 'Encomenda registrada');
+    },
+  });
+}
+
+/* ---------- Despesa ---------- */
+function modalDespesa(id = null) {
+  const d = id ? DB.despesas.find(x => x.id === id) : { nome: '', valor: null, data: hojeISO() };
+  if (!d) return;
+  abrirModal({
+    titulo: id ? 'Editar despesa' : 'Nova despesa', largura: 520,
+    corpo: `<div class="form-grid">${campo('de-nome', 'Nome', inputTxt('de-nome', d.nome, 'placeholder="Ex.: Embalagens, anúncio, contador"'), 'full')}</div><div class="form-grid">${campo('de-valor', 'Valor', inputNum('de-valor', d.valor))}${campo('de-data', 'Data', inputData('de-data', d.data))}</div>`,
+    rodape: rodapePadrao('Salvar', id ? `<button class="btn btn-sm btn-danger left" data-action="excluirDespesa" data-id="${id}">Excluir</button>` : ''),
+    onConfirm: () => {
+      const nome = val('de-nome');
+      const valor = parseNum(val('de-valor'));
+      if (!nome) return erro('Informe o nome da despesa.');
+      if (valor == null || Number.isNaN(valor)) return erro('Informe o valor.');
+      const dados = { nome, valor, data: val('de-data') || null };
+      if (id) Object.assign(d, dados); else DB.despesas.push({ id: uid(), ...dados });
+      commit(id ? 'Despesa atualizada' : 'Despesa lançada');
+    },
+  });
+}
+
+/* =========================================================
+   Busca geral
+   ========================================================= */
+function renderBusca() {
+  const box = $('#busca-res');
+  const q = norm($('#busca-global').value.trim());
+  if (!q) { box.hidden = true; box.innerHTML = ''; return; }
+  const st = statsProdutos();
+  const ps = DB.produtos.filter(p => norm(`${p.nome} ${p.sku} ${p.ean} ${p.fabricante}`).includes(q)).slice(0, 7);
+  const vfs = DB.vendasFisicas.filter(v => norm(v.pessoa).includes(q)).slice(0, 4);
+  const nfs = [...new Set(DB.estoque.map(i => i.nf).filter(nf => nf && norm(nf).includes(q)))].slice(0, 4);
+  const encs = DB.encomendas.filter(e => norm(`${e.cliente} ${e.produto}`).includes(q)).slice(0, 3);
+  let html = '';
+  if (ps.length) html += `<div class="sr-group">Produtos</div>${ps.map(p => `<button class="sr-item" data-action="buscaProduto" data-id="${p.id}"><span>${esc(p.nome)}</span><small>${st[p.id].disp} disp.</small></button>`).join('')}`;
+  if (vfs.length) html += `<div class="sr-group">Vendas físicas</div>${vfs.map(v => `<button class="sr-item" data-action="buscaFisica" data-id="${v.id}"><span>${esc(v.pessoa)}</span><small>${fdata(v.data)}</small></button>`).join('')}`;
+  if (nfs.length) html += `<div class="sr-group">Notas fiscais</div>${nfs.map(nf => `<button class="sr-item" data-action="buscaNF" data-nf="${esc(nf)}"><span>NF ${esc(nf)}</span></button>`).join('')}`;
+  if (encs.length) html += `<div class="sr-group">Encomendas</div>${encs.map(e => `<button class="sr-item" data-action="buscaEncomenda" data-id="${e.id}"><span>${esc(e.cliente)} · ${esc(e.produto)}</span><small>${esc(e.status)}</small></button>`).join('')}`;
+  box.innerHTML = html || '<div class="sr-vazio">Nada encontrado</div>';
+  box.hidden = false;
+}
+function fecharBusca() { const b = $('#busca-global'); b.value = ''; renderBusca(); b.blur(); }
+
+/* =========================================================
+   Renderização e navegação
+   ========================================================= */
+const VIEWS = { inicio: vInicio, produtos: vProdutos, estoque: vEstoque, compras: vCompras, vendas: vVendas, fisicas: vFisicas, encomendas: vEncomendas, dre: vDRE, despesas: vDespesas, config: vConfig };
+function render() {
+  const a = document.activeElement;
+  const id = a && a.id && $('#main').contains(a) ? a.id : null;
+  let sel = null;
+  try { if (id) sel = [a.selectionStart, a.selectionEnd]; } catch (e) { sel = null; }
+  const scroll = $('#main .table-wrap')?.scrollLeft;
+  renderNav();
+  $('#main').innerHTML = VIEWS[UI.view]();
+  if (scroll) { const w = $('#main .table-wrap'); if (w) w.scrollLeft = scroll; }
+  if (id) {
+    const el = document.getElementById(id);
+    if (el) { el.focus(); try { if (sel && sel[0] != null) el.setSelectionRange(sel[0], sel[1]); } catch (e) { /* campo sem seleção */ } }
+  }
+}
+let renderTimer = null;
+function agendarRender(ms) { clearTimeout(renderTimer); renderTimer = setTimeout(render, ms); }
+function go(view) {
+  document.body.classList.remove('menu-aberto');
+  if (location.hash.slice(1) === view) { UI.view = view; render(); window.scrollTo(0, 0); }
+  else location.hash = view;
+}
+window.addEventListener('hashchange', () => {
+  const v = location.hash.slice(1);
+  UI.view = VIEWS[v] ? v : 'inicio';
+  render();
+  window.scrollTo(0, 0);
+  if (UI.view === 'config' && mlChave() && !ML.status) mlAtualizar();
+});
+
+const CHAVE_MENU_FIXADO = 'belaOrdemMenuFixado';
+function aplicarMenuFixado(fixado, salvar) {
+  const sb = $('#sidebar');
+  sb.classList.toggle('fixada', fixado);
+  $('#sidebarEspaco').classList.toggle('fixada', fixado);
+  if (!fixado) sb.classList.remove('pairando');
+  if (salvar) { try { localStorage.setItem(CHAVE_MENU_FIXADO, fixado ? '1' : '0'); } catch (e) { /* sem armazenamento */ } }
+  renderNav();
+}
+$('#sidebar').addEventListener('mouseenter', e => { if (!e.currentTarget.classList.contains('fixada')) e.currentTarget.classList.add('pairando'); });
+$('#sidebar').addEventListener('mouseleave', e => e.currentTarget.classList.remove('pairando'));
+try { if (localStorage.getItem(CHAVE_MENU_FIXADO) === '1') { $('#sidebar').classList.add('fixada'); $('#sidebarEspaco').classList.add('fixada'); } } catch (e) { /* sem armazenamento */ }
+
+const ACOES = {
+  go: el => go(el.dataset.view),
+  toggleMenu: () => document.body.classList.toggle('menu-aberto'),
+  ordenar: el => {
+    const U = UI.produtos, col = el.dataset.col;
+    // primeiro clique: texto A→Z, números do maior para o menor (SKU do menor para o maior); segundo clique inverte
+    if (U.ordem === col) U.dir = U.dir === 'asc' ? 'desc' : 'asc';
+    else { U.ordem = col; U.dir = ['disp', 'vend', 'custo', 'venda', 'margem'].includes(col) ? 'desc' : 'asc'; }
+    resetLimite(); render();
+  },
+  pinMenu: () => aplicarMenuFixado(!$('#sidebar').classList.contains('fixada'), true),
+  set: el => {
+    setPath(UI, el.dataset.path, el.dataset.value);
+    if (el.dataset.tab) UI[el.dataset.path.split('.')[0]].tab = el.dataset.tab;
+    resetLimite(); render();
+  },
+  mais: el => { const [v, k] = el.dataset.path.split('.'); UI[v][k] += LIM[v]; render(); },
+  fecharModal: () => fecharModal(),
+  fundoModal: (el, e) => { if (e.target === el) fecharModal(); },
+  confirmarModal: () => { if (!MODAL?.onConfirm) return fecharModal(); const antes = MODAL; const r = MODAL.onConfirm(); if (r !== false && MODAL === antes) fecharModal(); },
+  novaVenda: () => modalVender(),
+  novaCompra: () => modalCompra(),
+  novoProduto: () => modalProduto(),
+  editarProduto: el => modalProduto(el.dataset.id),
+  compraProduto: el => modalCompra({ produtoId: el.dataset.id }),
+  venderProduto: el => modalVender({ produtoId: el.dataset.id }),
+  excluirProduto: el => {
+    const p = DB.produtos.find(x => x.id === el.dataset.id);
+    confirmar('Excluir produto', `Excluir <b>${esc(p?.nome)}</b>? Isso não pode ser desfeito.`, () => { DB.produtos = DB.produtos.filter(x => x.id !== el.dataset.id); commit('Produto excluído'); }, { texto: 'Excluir', perigo: true });
+  },
+  venderLote: el => modalVender({ lote: LOTES[+el.dataset.lote] }),
+  devolverLote: el => modalDevolver(LOTES[+el.dataset.lote]),
+  editarLote: el => modalLote(LOTES[+el.dataset.lote]),
+  excluirLote: () => {
+    const lote = MODAL?.lote;
+    if (!lote) return;
+    const ids = new Set(lote.ids);
+    confirmar('Excluir do estoque', `Excluir ${plural(lote.ids.length, 'unidade', 'unidades')} do histórico? Use isso só para corrigir lançamentos errados. Para cliente que devolveu, use "Devolução".`, () => { DB.estoque = DB.estoque.filter(i => !ids.has(i.id)); commit('Excluído do estoque'); }, { texto: 'Excluir', perigo: true });
+  },
+  escolherXml: () => $('#arquivo-nfe').click(),
+  escolherXmlCompras: () => $('#arquivos-nfe-compra').click(),
+  cadastrarFaltantes: () => { const m = MODAL; abrirCadastroXml({ fila: m.faltantes, i: 0, arquivos: m.arquivosCompra }); },
+  pularCadastro: () => { const f = MODAL.fluxo; f.i++; abrirCadastroXml(f); },
+  escolherXmlVendas: () => $('#arquivos-nfe-venda').click(),
+  addLinhaCompra: () => $('#mc-linhas').insertAdjacentHTML('beforeend', linhaCompra()),
+  addLinhaFisica: el => $('#' + el.dataset.alvo).insertAdjacentHTML('beforeend', linhaFisica()),
+  removerLinha: el => { const tb = el.closest('tbody'); if (tb.children.length > 1) el.closest('tr').remove(); else el.closest('tr').querySelectorAll('input').forEach(i => { if (i.type !== 'number') i.value = ''; }); },
+  abrirCompra: (el, e) => { if (e.target.closest('button')) return; const k = el.dataset.chave; UI.compras.abertas[k] = !UI.compras.abertas[k]; render(); },
+  editarCompra: el => modalEditarCompra(el.dataset.chave),
+  addNaCompra: el => { const g = comprasAgrupadas().find(x => x.chave === el.dataset.chave); if (g) modalCompra({ fornecedor: g.fornecedor || '', nf: g.nf || '', data: g.dFim || '' }); },
+  novaFisica: () => modalFisicaNova(),
+  abrirFisica: (el, e) => { if (e.target.closest('button') && e.target.closest('button') !== el) return; modalFisica(el.dataset.id); },
+  quitarFisica: el => {
+    const v = DB.vendasFisicas.find(x => x.id === el.dataset.id);
+    const total = statsVF()[v.id].venda;
+    confirmar('Quitar venda', `Marcar <b>${esc(v.pessoa)}</b> como paga (${brl(total)})?`, () => { v.pago = Math.round(total * 100) / 100; commit('Pagamento quitado'); }, { texto: 'Quitar' });
+  },
+  receberFisica: el => {
+    const v = DB.vendasFisicas.find(x => x.id === el.dataset.id);
+    const x = parseNum(val('fd-receber'));
+    if (!x || Number.isNaN(x)) return erro('Informe o valor recebido.');
+    v.pago = Math.round(((v.pago || 0) + x) * 100) / 100;
+    salvar(); render(); modalFisica(v.id); toast(`Pagamento de ${brl(x)} registrado`);
+  },
+  devolverFisica: el => {
+    const u = DB.estoque.find(i => i.id === el.dataset.uid);
+    if (u) devolverUnidades([u]);
+    salvar(); render(); modalFisica(el.dataset.id); toast('1 unidade voltou para o estoque');
+  },
+  excluirFisica: el => {
+    const v = DB.vendasFisicas.find(x => x.id === el.dataset.id);
+    const itens = DB.estoque.filter(i => i.vendaFisica === v.id);
+    confirmar('Excluir venda física', `Excluir a venda de <b>${esc(v.pessoa)}</b>? ${itens.length ? `As ${plural(itens.length, 'unidade volta', 'unidades voltam')} para o estoque como "À venda".` : ''}`, () => { devolverUnidades(itens); DB.vendasFisicas = DB.vendasFisicas.filter(x => x.id !== v.id); commit('Venda física excluída'); }, { texto: 'Excluir', perigo: true });
+  },
+  novaEncomenda: () => modalEncomenda(),
+  editarEncomenda: el => modalEncomenda(el.dataset.id),
+  excluirEncomenda: el => confirmar('Excluir encomenda', 'Excluir esta encomenda?', () => { DB.encomendas = DB.encomendas.filter(x => x.id !== el.dataset.id); commit('Encomenda excluída'); }, { texto: 'Excluir', perigo: true }),
+  novaDespesa: () => modalDespesa(),
+  editarDespesa: el => modalDespesa(el.dataset.id),
+  excluirDespesa: el => confirmar('Excluir despesa', 'Excluir esta despesa?', () => { DB.despesas = DB.despesas.filter(x => x.id !== el.dataset.id); commit('Despesa excluída'); }, { texto: 'Excluir', perigo: true }),
+  exportar: () => {
+    const blob = new Blob([JSON.stringify(DB, null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `bela-ordem-backup-${hojeISO()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('Backup baixado');
+  },
+  importar: () => $('#arquivo-import').click(),
+  mlSalvarChave: () => {
+    const k = val('ml-chave').trim();
+    if (!k) return erro('Cole a chave de acesso.');
+    try { localStorage.setItem(CHAVE_ML, k); } catch (e) { return erro('Este navegador bloqueou o armazenamento.'); }
+    ML.status = null; ML.pedidos = null; render(); mlAtualizar();
+  },
+  mlTirarChave: () => { try { localStorage.removeItem(CHAVE_ML); } catch (e) { /* sem armazenamento */ } ML.status = null; ML.pedidos = null; render(); },
+  mlConferir: () => modalConferirML(),
+  mlConectar: () => window.open(`${ML_URL}/ml-callback?connect=${encodeURIComponent(mlChave())}`, '_blank'),
+  mlSincronizar: async () => {
+    ML.ocupado = true; render();
+    try {
+      const { synced } = await mlChamar('sync', { days: 60 });
+      ML.pedidos = (await mlChamar('list', { limit: 1000 })).orders;
+      toast(`${plural(synced, 'pedido sincronizado', 'pedidos sincronizados')}`);
+    } catch (e) { toast(e.message, true); }
+    ML.ocupado = false; render();
+  },
+  restaurarNotion: () => confirmar('Restaurar dados do Notion', 'Isso <b>substitui tudo</b> o que está salvo neste navegador pelos dados migrados do Notion. Tudo o que você lançou depois será perdido. Baixe um backup antes se tiver dúvida.', () => { DB = dadosDoNotion(); commit('Dados do Notion restaurados'); }, { texto: 'Substituir tudo', perigo: true }),
+  apagarTudo: () => confirmar('Apagar todos os dados', 'Isso apaga produtos, estoque, vendas, despesas e encomendas deste navegador. Não pode ser desfeito sem um backup.', () => { DB = dadosVazios(); commit('Todos os dados foram apagados'); }, { texto: 'Apagar tudo', perigo: true }),
+  salvarPrefs: () => {
+    const taxa = parseNum(val('cfg-taxa'));
+    if (taxa == null || Number.isNaN(taxa)) return erro('Informe a taxa padrão.');
+    const lista = id => [...new Set(val(id).split('\n').map(s => s.trim()).filter(Boolean))];
+    Object.assign(DB.config, { taxaPadrao: taxa / 100, fornecedores: lista('cfg-forn'), tipos: lista('cfg-tipos'), fabricantes: lista('cfg-fab') });
+    commit('Preferências salvas');
+  },
+  buscaProduto: el => {
+    const p = DB.produtos.find(x => x.id === el.dataset.id);
+    const disp = statsProdutos()[p.id].disp;
+    Object.assign(UI.estoque, { tab: disp ? 'avenda' : 'geral', q: p.nome, fornecedor: '', mes: '', limite: LIM.estoque });
+    fecharBusca(); go('estoque');
+  },
+  buscaFisica: el => { fecharBusca(); go('fisicas'); modalFisica(el.dataset.id); },
+  buscaNF: el => { UI.compras.q = el.dataset.nf; fecharBusca(); go('compras'); },
+  buscaEncomenda: el => { fecharBusca(); go('encomendas'); modalEncomenda(el.dataset.id); },
+};
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search')) $('#busca-res').hidden = true;
+  const el = e.target.closest('[data-action]');
+  if (el && ACOES[el.dataset.action]) ACOES[el.dataset.action](el, e);
+});
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (el.dataset.bind && el.tagName !== 'SELECT' && el.type !== 'checkbox') {
+    setPath(UI, el.dataset.bind, el.value);
+    resetLimite();
+    agendarRender(160);
+  }
+  if (el.id === 'busca-global') renderBusca();
+  if (el.id === 'mv-prod') atualizarVenderProduto();
+  if (el.classList.contains('mc-prod')) { el.closest('tr').classList.remove('mc-pend'); preencherLinhaCompra(el.closest('tr')); }
+  if (el.classList.contains('vx-prod')) preencherLinhaVx(el.closest('tr'));
+  if (el.closest('.mc-linha')) atualizarMargemCompra(el.closest('.mc-linha'));
+  if (el.classList.contains('vf-prod')) preencherLinhaFisica(el.closest('tr'));
+});
+document.addEventListener('change', e => {
+  const el = e.target;
+  if (el.dataset.bind && (el.tagName === 'SELECT' || el.type === 'checkbox')) {
+    setPath(UI, el.dataset.bind, el.type === 'checkbox' ? el.checked : el.value);
+    resetLimite();
+    render();
+  }
+  if (el.name === 'mv-canal') el.closest('.modal').classList.toggle('canal-fisica', el.value === 'fisica');
+  if (el.classList.contains('enc-status')) {
+    const enc = DB.encomendas.find(x => x.id === el.dataset.id);
+    if (enc) { enc.status = el.value; commit(`Encomenda: ${el.value}`); }
+  }
+  if (el.id === 'arquivo-nfe' && el.files[0]) {
+    const leitor = new FileReader();
+    leitor.onload = () => importarNFe(leitor.result);
+    leitor.readAsText(el.files[0]);
+    el.value = '';
+  }
+  if (el.id === 'arquivos-nfe-compra' && el.files.length) {
+    const arqs = [...el.files];
+    el.value = '';
+    Promise.all(arqs.map(f => f.text().then(texto => ({ nome: f.name, texto })))).then(modalNotasCompra);
+  }
+  if (el.id === 'arquivos-nfe-venda' && el.files.length) {
+    const arqs = [...el.files];
+    el.value = '';
+    Promise.all(arqs.map(f => f.text().then(texto => ({ nome: f.name, texto })))).then(modalVendasXml);
+  }
+  if (el.id === 'arquivo-import' && el.files[0]) {
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      let dados;
+      try { dados = JSON.parse(leitor.result); } catch (err) { erro('Arquivo inválido: não é um JSON.'); return; }
+      if (!dados || !Array.isArray(dados.produtos) || !Array.isArray(dados.estoque)) { erro('Este arquivo não parece um backup da Bela Ordem.'); return; }
+      confirmar('Importar backup', `O backup tem ${dados.produtos.length} produtos e ${dados.estoque.length.toLocaleString('pt-BR')} unidades de estoque. Ele <b>substitui</b> os dados atuais deste navegador.`, () => {
+        const base = dadosVazios();
+        DB = { ...base, ...dados, config: { ...configPadrao(), ...(dados.config || {}) } };
+        commit('Backup importado');
+      }, { texto: 'Importar e substituir', perigo: true });
+    };
+    leitor.readAsText(el.files[0]);
+    el.value = '';
+  }
+});
+document.addEventListener('keydown', e => {
+  const tag = e.target.tagName;
+  if (e.key === 'Escape') {
+    if (MODAL || $('#modal-root').children.length) { fecharModal(); return; }
+    if (!$('#busca-res').hidden) fecharBusca();
+    document.body.classList.remove('menu-aberto');
+  }
+  if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) && !MODAL) { e.preventDefault(); $('#busca-global').focus(); }
+  if (e.key === 'Enter' && MODAL && tag === 'INPUT' && e.target.closest('.modal') && !e.target.list) { e.preventDefault(); ACOES.confirmarModal(); }
+  if (e.key === 'Enter' && e.target.id === 'busca-global') { const first = $('#busca-res .sr-item'); if (first) first.click(); }
+});
+
+/* ---------- início ---------- */
+carregar();
+UI.view = VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'inicio';
+render();
+</script>
+</body>
+</html>

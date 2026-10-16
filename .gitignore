@@ -1,0 +1,7 @@
+# NUNCA publicar: dados reais da loja (custos, fornecedores, vendas)
+dados-iniciais.js
+*.backup-*.html
+bela-ordem-backup-*.json
+*.json
+!supabase/**/*.json
+supabase/.temp/
