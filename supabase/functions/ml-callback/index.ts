@@ -1,4 +1,4 @@
-import { checkState, exchangeCode, makeState, redirectUri, saveTokens } from "../_shared/ml.ts";
+import { checkState, exchangeCode, saveTokens } from "../_shared/ml.ts";
 
 // o Supabase serve HTML como texto no domínio padrão, então respondemos texto simples
 const page = (msg: string, status = 200) =>
@@ -7,19 +7,7 @@ const page = (msg: string, status = 200) =>
 Deno.serve(async (req) => {
   const u = new URL(req.url);
 
-  // 1) início: /ml-callback?connect=<BO_KEY> -> manda para o login do ML
-  const connect = u.searchParams.get("connect");
-  if (connect !== null) {
-    if (connect !== Deno.env.get("BO_KEY")) return page("Chave inválida", 403);
-    const a = new URL("https://auth.mercadolivre.com.br/authorization");
-    a.searchParams.set("response_type", "code");
-    a.searchParams.set("client_id", Deno.env.get("ML_CLIENT_ID")!);
-    a.searchParams.set("redirect_uri", redirectUri());
-    a.searchParams.set("state", await makeState());
-    return Response.redirect(a.toString(), 302);
-  }
-
-  // 2) retorno do ML com ?code=
+  // retorno do ML com ?code= (o início do fluxo agora é a ação "conectar" do ml-sync, que exige login)
   const code = u.searchParams.get("code");
   if (!code) return page("Nada para fazer aqui.", 400);
   if (!(await checkState(u.searchParams.get("state")))) {

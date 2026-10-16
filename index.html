@@ -283,6 +283,12 @@ td.empty-cell{padding:40px;text-align:center;color:var(--faint);white-space:norm
   .bar-row{grid-template-columns:minmax(0,130px) 1fr 36px;gap:10px}
   h1{font-size:21px}
 }
+
+.login-tela{position:fixed;inset:0;z-index:9999;background:#f6f5fb;display:grid;place-items:center;padding:16px}
+.login-card{width:100%;max-width:380px;background:#fff;border-radius:16px;padding:32px 28px;box-shadow:0 10px 40px rgba(60,40,120,.12)}
+.login-card h1{margin:0 0 4px;font-size:22px}.login-card p{margin:0 0 20px;color:#6b6b76;font-size:14px}
+.login-card .f{margin-bottom:14px}.login-card .btn{width:100%;justify-content:center;margin-top:6px}
+.login-card .login-erro{color:#a2282e;font-size:13px;min-height:18px;margin:8px 0 0}
 </style>
 </head>
 <body>
@@ -459,6 +465,7 @@ function salvar() {
     armazenamentoOk = true;
     el.className = 'save-status';
     el.textContent = 'Salvo neste navegador';
+    agendarNuvem();
   } catch (e) {
     armazenamentoOk = false;
     el.className = 'save-status erro';
@@ -639,7 +646,7 @@ function renderNav() {
   const fixada = $('#sidebar').classList.contains('fixada');
   $('#sidebar').innerHTML = `<div class="pin-row"><button class="btn-pin ${fixada ? 'fixada' : ''}" data-action="pinMenu" type="button" aria-label="Fixar menu aberto" aria-pressed="${fixada}" title="${fixada ? 'Desafixar menu' : 'Fixar menu aberto'}"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v3.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg></button></div>
   <nav class="nav" aria-label="Menu principal">${NAV.map(s => `<div class="nav-sec">${s.sec}</div>${s.itens.map(([k, l, i]) => `<button class="nav-item ${UI.view === k ? 'on' : ''}" data-action="go" data-view="${k}" ${UI.view === k ? 'aria-current="page"' : ''}>${ic(i)}<span>${l}</span>${badges[k] != null ? `<span class="badge">${badges[k]}</span>` : ''}</button>`).join('')}`).join('')}</nav>
-  <div class="nav-foot"><button class="nav-item ${UI.view === 'config' ? 'on' : ''}" data-action="go" data-view="config">${ic('database')}<span>Dados e backup</span></button></div>`;
+  <div class="nav-foot"><button class="nav-item ${UI.view === 'config' ? 'on' : ''}" data-action="go" data-view="config">${ic('database')}<span>Dados e backup</span></button><button class="nav-item" data-action="sair">${ic('x')}<span>Sair</span></button></div>`;
 }
 
 /* =========================================================
@@ -1077,30 +1084,16 @@ function vConfig() {
    Integração Mercado Livre (Supabase "ML Admin")
    Só leitura: mostra os pedidos puxados, não altera estoque nem vendas.
    ========================================================= */
-const ML_URL = 'https://rjntddpjwqxxwmainogw.supabase.co/functions/v1';
-const CHAVE_ML = 'belaOrdemMlChave';
+
 const ML = { status: null, pedidos: null, ocupado: false };
-const mlChave = () => { try { return localStorage.getItem(CHAVE_ML) || ''; } catch (e) { return ''; } };
 
 async function mlChamar(action, extra = {}) {
-  const r = await fetch(`${ML_URL}/ml-sync`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-bo-key': mlChave() },
-    body: JSON.stringify({ action, ...extra }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || `Erro ${r.status}`);
-  return j;
+  return chamar('ml-sync', { method: 'POST', body: { action, ...extra } });
 }
 
 function cardML() {
-  const chave = mlChave();
   let corpo;
-  if (!chave) {
-    corpo = `<p class="hint" style="margin:0 0 10px;line-height:1.5">Cole a chave de acesso (arquivo bo-key.txt) para liberar a conexão com o Mercado Livre neste navegador.</p>
-      <div class="form-grid"><div class="f full"><label for="ml-chave">Chave de acesso</label><input id="ml-chave" type="password" autocomplete="off"></div></div>
-      <button class="btn btn-dark" data-action="mlSalvarChave">Salvar chave</button>`;
-  } else {
+  {
     const s = ML.status;
     const estado = !s ? 'Verificando...' : s.connected ? `Conectado (conta ${esc(String(s.ml_user_id))})` : 'Não conectado';
     const ped = ML.pedidos;
@@ -1112,7 +1105,6 @@ function cardML() {
         <button class="btn" data-action="mlConectar">${s?.connected ? 'Reconectar' : 'Conectar Mercado Livre'}</button>
         <button class="btn btn-dark" data-action="mlSincronizar" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>${ML.ocupado ? 'Sincronizando...' : 'Sincronizar vendas (60 dias)'}</button>
         <button class="btn" data-action="mlConferir" ${ML.pedidos?.length ? '' : 'disabled'}>Conferir com meu estoque</button>
-        <button class="btn btn-sm btn-soft" data-action="mlTirarChave">Remover chave deste navegador</button>
       </div>${tabela}`;
   }
   return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Mercado Livre</h2></div>${corpo}</div>`;
@@ -1946,11 +1938,12 @@ function go(view) {
   else location.hash = view;
 }
 window.addEventListener('hashchange', () => {
+  if (!DB) return;   // ainda na tela de login
   const v = location.hash.slice(1);
   UI.view = VIEWS[v] ? v : 'inicio';
   render();
   window.scrollTo(0, 0);
-  if (UI.view === 'config' && mlChave() && !ML.status) mlAtualizar();
+  if (UI.view === 'config' && sessao() && !ML.status) mlAtualizar();
 });
 
 const CHAVE_MENU_FIXADO = 'belaOrdemMenuFixado';
@@ -2056,15 +2049,10 @@ const ACOES = {
     toast('Backup baixado');
   },
   importar: () => $('#arquivo-import').click(),
-  mlSalvarChave: () => {
-    const k = val('ml-chave').trim();
-    if (!k) return erro('Cole a chave de acesso.');
-    try { localStorage.setItem(CHAVE_ML, k); } catch (e) { return erro('Este navegador bloqueou o armazenamento.'); }
-    ML.status = null; ML.pedidos = null; render(); mlAtualizar();
+  mlConectar: async () => {
+    try { window.open((await mlChamar('conectar')).url, '_blank'); } catch (e) { toast(e.message, true); }
   },
-  mlTirarChave: () => { try { localStorage.removeItem(CHAVE_ML); } catch (e) { /* sem armazenamento */ } ML.status = null; ML.pedidos = null; render(); },
-  mlConferir: () => modalConferirML(),
-  mlConectar: () => window.open(`${ML_URL}/ml-callback?connect=${encodeURIComponent(mlChave())}`, '_blank'),
+  sair: () => confirmar('Sair', 'Sair da sua conta neste navegador? Os dados continuam salvos na nuvem.', () => { sairDaConta(); }, { texto: 'Sair' }),
   mlSincronizar: async () => {
     ML.ocupado = true; render();
     try {
@@ -2169,10 +2157,128 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.id === 'busca-global') { const first = $('#busca-res .sr-item'); if (first) first.click(); }
 });
 
+/* =========================================================
+   Login e dados na nuvem (Supabase "ML Admin")
+   Só entra quem tiver usuário e estiver na lista de e-mails autorizados.
+   ========================================================= */
+const SB_URL = 'https://rjntddpjwqxxwmainogw.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqbnRkZHBqd3F4eHdtYWlub2d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5OTI0MjUsImV4cCI6MjEwNDU2ODQyNX0.ukStu7Iby70z6pklAdv0-Gx24_duZ1gIBem7CwYiTP4'; // chave pública do projeto (feita para ficar no site)
+const ML_URL = `${SB_URL}/functions/v1`;
+const CHAVE_SESSAO = 'belaOrdemSessao';
+let VERSAO = 0, nuvemTimer = null, nuvemBloqueada = false, nuvemEnviando = false, nuvemSuja = false;
+
+function sessao() { try { return JSON.parse(localStorage.getItem(CHAVE_SESSAO) || 'null'); } catch (e) { return null; } }
+function gravarSessao(s) { try { s ? localStorage.setItem(CHAVE_SESSAO, JSON.stringify(s)) : localStorage.removeItem(CHAVE_SESSAO); } catch (e) { /* sem armazenamento */ } }
+function sessaoDe(j) { return { access_token: j.access_token, refresh_token: j.refresh_token, expira: Date.now() + (j.expires_in || 3600) * 1000, email: j.user?.email || sessao()?.email || '' }; }
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento */ } };
+
+async function authFetch(caminho, corpo) {
+  const r = await fetch(`${SB_URL}/auth/v1/${caminho}`, { method: 'POST', headers: { apikey: SB_ANON, 'content-type': 'application/json' }, body: JSON.stringify(corpo) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error_description || j.msg || j.message || `Erro ${r.status}`);
+  return j;
+}
+async function tokenValido() {
+  let s = sessao();
+  if (!s) return null;
+  if (s.expira - Date.now() < 60000) {
+    try { s = sessaoDe(await authFetch('token?grant_type=refresh_token', { refresh_token: s.refresh_token })); gravarSessao(s); }
+    catch (e) { gravarSessao(null); return null; }
+  }
+  return s.access_token;
+}
+async function chamar(fn, { method = 'GET', body } = {}) {
+  const t = await tokenValido();
+  if (!t) { mostrarLogin(); throw new Error('Sessão expirada. Entre de novo.'); }
+  const r = await fetch(`${ML_URL}/${fn}`, { method, headers: { authorization: `Bearer ${t}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401) { gravarSessao(null); mostrarLogin('Este e-mail não tem acesso ao site.'); throw new Error(j.error || 'não autorizado'); }
+  if (!r.ok) { const e = new Error(j.error || `Erro ${r.status}`); e.status = r.status; throw e; }
+  return j;
+}
+
+function statusNuvem(txt, erroFlag = false) { const el = $('#save-status'); if (el) { el.className = 'save-status' + (erroFlag ? ' erro' : ''); el.textContent = txt; } }
+function agendarNuvem() {
+  if (!sessao() || nuvemBloqueada) return;
+  nuvemSuja = true; lsSet(LS_KEY + ':pend', '1');
+  clearTimeout(nuvemTimer);
+  nuvemTimer = setTimeout(empurrarNuvem, 1200);
+}
+async function empurrarNuvem() {
+  if (nuvemEnviando) { nuvemTimer = setTimeout(empurrarNuvem, 1500); return; }
+  if (!nuvemSuja || nuvemBloqueada || !sessao()) return;
+  nuvemEnviando = true; nuvemSuja = false;
+  try {
+    const r = await chamar('bo-dados', { method: 'PUT', body: { dados: DB, versao_base: VERSAO } });
+    VERSAO = r.versao; lsSet(LS_KEY + ':v', String(VERSAO));
+    if (!nuvemSuja) { lsSet(LS_KEY + ':pend', '0'); statusNuvem('Salvo na nuvem'); }
+  } catch (e) {
+    nuvemSuja = true;
+    if (e.status === 409) { nuvemBloqueada = true; statusNuvem('Dados mudaram em outro aparelho: recarregue a página', true); toast('Os dados foram alterados em outro aparelho. Recarregue a página antes de continuar, senão suas alterações aqui não serão salvas na nuvem.', true); }
+    else statusNuvem('Salvo só neste navegador (sem conexão com a nuvem)', true);
+  }
+  nuvemEnviando = false;
+}
+window.addEventListener('online', () => { if (nuvemSuja) agendarNuvem(); });
+
+async function carregarNuvem() {
+  statusNuvem('Carregando da nuvem...');
+  try {
+    const r = await chamar('bo-dados');
+    if (r.dados) {
+      const pendente = lsGet(LS_KEY + ':pend') === '1' && Number(lsGet(LS_KEY + ':v') || 0) === r.versao;
+      if (!pendente) {
+        DB = { ...dadosVazios(), ...r.dados, config: { ...configPadrao(), ...(r.dados.config || {}) } };
+        lsSet(LS_KEY, JSON.stringify(DB));
+      }
+      VERSAO = r.versao; lsSet(LS_KEY + ':v', String(VERSAO));
+      statusNuvem('Salvo na nuvem');
+      if (pendente) agendarNuvem();
+    } else if (DB.produtos.length) {            // nuvem vazia e este navegador tem dados: sobe tudo
+      VERSAO = 0; nuvemSuja = true; await empurrarNuvem();
+    } else { VERSAO = 0; statusNuvem('Nuvem vazia: importe um backup'); }
+  } catch (e) { statusNuvem('Sem conexão com a nuvem: usando cópia deste navegador', true); }
+}
+
+function mostrarLogin(msg = '') {
+  let el = $('#login-root');
+  if (!el) { el = document.createElement('div'); el.id = 'login-root'; document.body.appendChild(el); }
+  el.innerHTML = `<div class="login-tela"><form class="login-card" id="form-login" autocomplete="on">
+    <h1>Bela Ordem</h1><p>Entre para acessar a plataforma.</p>
+    <div class="f"><label for="lg-email">E-mail</label><input id="lg-email" type="email" autocomplete="username" required value="${esc(sessao()?.email || '')}"></div>
+    <div class="f"><label for="lg-senha">Senha</label><input id="lg-senha" type="password" autocomplete="current-password" required></div>
+    <button class="btn btn-dark" type="submit">Entrar</button>
+    <div class="login-erro" id="lg-erro" role="alert">${esc(msg)}</div></form></div>`;
+  setTimeout(() => $('#lg-email')?.focus(), 30);
+}
+document.addEventListener('submit', async e => {
+  if (e.target.id !== 'form-login') return;
+  e.preventDefault();
+  const btn = e.target.querySelector('button'), er = $('#lg-erro');
+  btn.disabled = true; er.textContent = '';
+  try {
+    const j = await authFetch('token?grant_type=password', { email: $('#lg-email').value.trim(), password: $('#lg-senha').value });
+    gravarSessao(sessaoDe(j));
+    $('#login-root').innerHTML = '';
+    await iniciarApp();
+  } catch (err) { er.textContent = /invalid/i.test(err.message) ? 'E-mail ou senha incorretos.' : err.message; btn.disabled = false; }
+});
+function sairDaConta() {
+  gravarSessao(null);
+  try { for (const k of ['', ':v', ':pend']) localStorage.removeItem(LS_KEY + k); } catch (e) { /* sem armazenamento */ }
+  location.reload();
+}
+
+async function iniciarApp() {
+  carregar();
+  await carregarNuvem();
+  UI.view = VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'inicio';
+  render();
+}
+
 /* ---------- início ---------- */
-carregar();
-UI.view = VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'inicio';
-render();
+(async () => { if (await tokenValido()) await iniciarApp(); else mostrarLogin(); })();
 </script>
 </body>
 </html>

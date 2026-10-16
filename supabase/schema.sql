@@ -24,3 +24,19 @@ create table if not exists ml_orders (
 );
 create index if not exists ml_orders_date_idx on ml_orders (date_created desc);
 alter table ml_orders enable row level security;
+
+-- Banco inteiro da plataforma como um documento (uma linha só)
+create table if not exists bo_dados (
+  id int primary key default 1 check (id = 1),
+  dados jsonb not null,
+  versao int not null default 1,
+  atualizado_em timestamptz not null default now(),
+  atualizado_por text
+);
+alter table bo_dados enable row level security;
+
+-- E-mails autorizados a usar o site (além de ter login)
+create table if not exists bo_acesso (
+  email text primary key check (email = lower(email))
+);
+alter table bo_acesso enable row level security;

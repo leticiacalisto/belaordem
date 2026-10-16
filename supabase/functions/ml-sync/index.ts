@@ -1,4 +1,4 @@
-import { cors, db, getAccess } from "../_shared/ml.ts";
+import { autenticar, cors, db, getAccess, urlConectar } from "../_shared/ml.ts";
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -53,12 +53,11 @@ async function sync(days: number) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
-  if (req.headers.get("x-bo-key") !== Deno.env.get("BO_KEY")) {
-    return json({ error: "não autorizado" }, 401);
-  }
+  if (!(await autenticar(req))) return json({ error: "não autorizado" }, 401);
   try {
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};
     const action = body.action ?? "list";
+    if (action === "conectar") return json({ url: await urlConectar() });
     if (action === "status") {
       const { data } = await db.from("ml_tokens")
         .select("ml_user_id, expires_at, updated_at").eq("id", 1).maybeSingle();
