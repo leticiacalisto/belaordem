@@ -1129,40 +1129,101 @@ function cardML() {
 const diasEntre = (a, b) => Math.abs((Date.parse(a) - Date.parse(b)) / 86400000);
 const dataBR = iso => new Date(Date.parse(iso) - 3 * 3600e3).toISOString().slice(0, 10);
 
-function produtoMl(it) {
+const skuNum = x => String(x ?? '').replace(/\D/g, '').replace(/^0+/, '');
+/* Produtos que um anúncio do ML pode ser: o vínculo salvo (mlMapa) ou, senão, mesmo SKU (sem zeros à esquerda)
+   ou SKU igual a um EAN. Kits repetem o SKU do produto base, então ficam em ordem de semelhança com o título. */
+function candidatosMl(it) {
   const mapa = DB.config.mlMapa || {};
-  if (it.item_id && mapa[it.item_id]) { const p = DB.produtos.find(x => x.id === mapa[it.item_id]); if (p) return p; }
-  if (it.sku == null) return null;
-  const c = DB.produtos.filter(p => String(p.sku) === String(it.sku));
-  if (c.length <= 1) return c[0] || null;
-  // kits têm o mesmo SKU do produto base: desempata pelo título do anúncio (palavras em comum e o "kit N")
-  const palavras = t => new Set(norm(t).split(/[^a-z0-9]+/).filter(Boolean));
-  const tit = palavras(it.title), kitT = norm(it.title).match(/kit\s*(\d+)/)?.[1] || '';
-  const pont = p => [...palavras(p.nome)].filter(w => tit.has(w)).length + ((norm(p.nome).match(/kit\s*(\d+)/)?.[1] || '') === kitT ? 5 : 0);
-  return c.slice().sort((a, b) => pont(b) - pont(a))[0];
+  if (it.item_id && mapa[it.item_id]) { const p = DB.produtos.find(x => x.id === mapa[it.item_id]); if (p) return [p]; }
+  const sk = skuNum(it.sku);
+  if (!sk) return [];
+  const c = DB.produtos.filter(p => skuNum(p.sku) === sk || skuNum(p.ean) === sk || (p.eanAlt || []).some(a => skuNum(a) === sk));
+  const pal = t => new Set(norm(t).split(/[^a-z0-9]+/).filter(Boolean));
+  const kitN = t => norm(t).match(/kit\s*(\d+)/)?.[1] || '';
+  const tit = pal(it.title);
+  const pont = p => [...pal(p.nome)].filter(w => tit.has(w)).length + (kitN(p.nome) === kitN(it.title) ? 6 : (kitN(p.nome) || kitN(it.title)) ? -6 : 0);
+  return c.sort((a, b) => pont(b) - pont(a));
 }
+/* melhor produto pelo título (palavras em comum / total de palavras), para sugerir o vínculo de anúncios sem produto */
+function sugestaoTitulo(titulo) {
+  const stop = new Set(['de', 'da', 'do', 'com', 'sem', 'sabor', 'em', 'e', 'cps', 'caps', 'capsulas', 'mg', 'g', 'ml', 'un', 'original', 'suplemento', 'pote', 'po', 'para']);
+  const tk = t => new Set(norm(t).split(/[^a-z0-9]+/).filter(w => w && !stop.has(w)));
+  const a = tk(titulo);
+  let melhor = null, nota = 0;
+  for (const p of DB.produtos) {
+    const b = tk(p.nome), inter = [...b].filter(w => a.has(w)).length, jac = inter / ((a.size + b.size - inter) || 1);
+    if (jac > nota) { nota = jac; melhor = p; }
+  }
+  return nota >= 0.4 ? melhor : null;
+}
+
+/* Janela de ±10 dias e valor com tolerância (max R$ 1,50 ou 4%): vendas lançadas à mão raramente têm data e preço idênticos aos do pedido. */
+const JANELA_DUP = 10, tolValor = v => Math.max(1.5, 0.04 * v);
 function mlAnalisar() {
   const linhas = [], usados = new Set();
   const pedidos = (ML.pedidos || []).filter(o => o.status === 'paid').sort((a, b) => a.date_created.localeCompare(b.date_created));
   for (const o of pedidos) {
     const data = dataBR(o.date_created);
     for (const it of o.items || []) {
-      const qtd = it.qty || 1;
-      const prod = produtoMl(it);
-      const base = { o, it, prod, qtd, data, ids: [] };
-      if (!prod) { linhas.push({ ...base, estado: 'semprod' }); continue; }
-      if (DB.estoque.filter(u => u.mlPedido === o.id && u.produto === prod.id).length >= qtd) { linhas.push({ ...base, estado: 'ja' }); continue; }
-      const dup = DB.estoque.filter(u => u.produto === prod.id && u.status === 'vendido' && !u.vendaFisica && !u.mlPedido && !usados.has(u.id)
-        && u.dVenda && diasEntre(u.dVenda, data) <= 1 && Math.abs((u.venda || 0) - it.unit_price) <= 0.5).slice(0, qtd);
-      if (dup.length >= qtd) { dup.forEach(u => usados.add(u.id)); linhas.push({ ...base, estado: 'dup', ids: dup.map(u => u.id) }); continue; }
-      if (dup.length) { dup.forEach(u => usados.add(u.id)); linhas.push({ ...base, estado: 'revisar', ids: dup.map(u => u.id) }); continue; }
-      const livres = unidadesDisponiveis(prod.id).filter(u => !usados.has(u.id));
-      if (livres.length < qtd) { linhas.push({ ...base, estado: 'semestoque' }); continue; }
-      const sel = livres.slice(0, qtd); sel.forEach(u => usados.add(u.id));
-      linhas.push({ ...base, estado: 'nova', ids: sel.map(u => u.id) });
+      const qtd = it.qty || 1, cands = candidatosMl(it);
+      const base = { o, it, prod: cands[0] || null, qtd, data, ids: [] };
+      if (!cands.length) { linhas.push({ ...base, estado: 'semprod' }); continue; }
+      const jaP = cands.find(p => DB.estoque.filter(u => u.mlPedido === o.id && u.produto === p.id).length >= qtd);
+      if (jaP) { linhas.push({ ...base, prod: jaP, estado: 'ja' }); continue; }
+      let achou = null;
+      for (const p of cands) {
+        const dup = DB.estoque.filter(u => u.produto === p.id && u.status === 'vendido' && !u.vendaFisica && !u.mlPedido && !usados.has(u.id)
+          && u.dVenda && diasEntre(u.dVenda, data) <= JANELA_DUP && Math.abs((u.venda || 0) - it.unit_price) <= tolValor(it.unit_price))
+          .sort((a, b) => diasEntre(a.dVenda, data) - diasEntre(b.dVenda, data) || Math.abs((a.venda || 0) - it.unit_price) - Math.abs((b.venda || 0) - it.unit_price));
+        if (dup.length >= qtd) { achou = { p, us: dup.slice(0, qtd) }; break; }
+      }
+      if (achou) { achou.us.forEach(u => usados.add(u.id)); linhas.push({ ...base, prod: achou.p, estado: 'dup', ids: achou.us.map(u => u.id) }); continue; }
+      let nova = null;
+      for (const p of cands) {
+        const livres = unidadesDisponiveis(p.id).filter(u => !usados.has(u.id));
+        if (livres.length >= qtd) { nova = { p, us: livres.slice(0, qtd) }; break; }
+      }
+      if (nova) { nova.us.forEach(u => usados.add(u.id)); linhas.push({ ...base, prod: nova.p, estado: 'nova', ids: nova.us.map(u => u.id) }); continue; }
+      linhas.push({ ...base, estado: 'semestoque' });
     }
   }
   return linhas;
+}
+
+/* Vincula anúncios do ML que não casam com nenhum produto (sem SKU, SKU diferente, item que ainda não existe no cadastro). */
+function modalVincularAnuncios() {
+  const grupos = new Map();
+  for (const l of mlAnalisar().filter(x => x.estado === 'semprod')) {
+    const k = l.it.item_id || l.it.title;
+    if (!grupos.has(k)) grupos.set(k, { it: l.it, n: 0 });
+    grupos.get(k).n++;
+  }
+  const lista = [...grupos.values()].sort((a, b) => b.n - a.n);
+  const corpo = `<div class="info">${plural(lista.length, 'anúncio', 'anúncios')} do ML sem produto correspondente. Confirme o produto de cada um (já sugeri pelo nome do anúncio quando deu) ou marque <b>Criar produto</b> se ele ainda não existe no cadastro. Deixe em branco para pular.</div>
+  <div class="table-wrap livre" style="margin-top:12px;max-height:55vh;overflow:auto"><table><thead><tr><th>Anúncio do Mercado Livre</th><th>SKU ML</th><th class="num">Pedidos</th><th>Produto</th><th>Criar</th></tr></thead><tbody>
+  ${lista.map((g, k) => { const sug = sugestaoTitulo(g.it.title);
+    return `<tr><td style="max-width:340px">${esc(g.it.title)}</td><td class="muted">${esc(g.it.sku ?? '—')}</td><td class="num">${g.n}</td><td class="w-prod"><input class="va-prod" data-k="${k}" list="dl-va" value="${sug ? esc(labelProduto(sug)) : ''}" placeholder="Produto" autocomplete="off"></td><td><input type="checkbox" class="va-novo" data-k="${k}" aria-label="Criar produto"></td></tr>`; }).join('')}
+  </tbody></table></div>${datalistProdutos('dl-va', false)}`;
+  abrirModal({
+    titulo: 'Vincular anúncios do Mercado Livre', corpo, largura: 1100, rodape: rodapePadrao('Salvar vínculos'), dados: { anuncios: lista },
+    onConfirm: () => {
+      const mapa = DB.config.mlMapa = DB.config.mlMapa || {};
+      let vinc = 0, criados = 0;
+      for (const [k, g] of MODAL.anuncios.entries()) {
+        const id = g.it.item_id; if (!id) continue;
+        if ($(`.va-novo[data-k="${k}"]`).checked) {
+          const sk = skuNum(g.it.sku);
+          const livre = sk && sk.length <= 5 && !DB.produtos.some(p => skuNum(p.sku) === sk);
+          const novo = { id: uid(), nome: g.it.title.replace(/\s+Sem Sabor$/i, '').slice(0, 90), sku: livre ? Number(sk) : Math.max(0, ...DB.produtos.map(x => x.sku || 0)) + 1, fabricante: null, tipos: [], ncm: '', ean: '', eanAlt: [] };
+          DB.produtos.push(novo); mapa[id] = novo.id; criados++; continue;
+        }
+        const prod = produtoPorLabel($(`.va-prod[data-k="${k}"]`).value);
+        if (prod) { mapa[id] = prod.id; vinc++; }
+      }
+      commit(`${plural(vinc, 'anúncio vinculado', 'anúncios vinculados')}, ${plural(criados, 'produto criado', 'produtos criados')}`);
+      modalConferirML();
+    },
+  });
 }
 
 const ML_ESTADOS = {
@@ -1171,7 +1232,7 @@ const ML_ESTADOS = {
   nova: ['c-green', 'Nova venda', true],
   revisar: ['c-orange', 'Parte já lançada: revise à mão', false],
   semestoque: ['c-red', 'Sem unidade: lançar como bonificação (custo 0)', true],
-  semprod: ['c-red', 'SKU não encontrado', false],
+  semprod: ['c-red', 'Anúncio sem produto: vincule', false],
 };
 
 function modalConferirML() {
@@ -1179,6 +1240,7 @@ function modalConferirML() {
   const cont = e => linhas.filter(l => l.estado === e).length;
   const mostrar = linhas.filter(l => l.estado !== 'ja');
   const corpo = `<div class="info">${plural(cont('nova'), 'venda nova', 'vendas novas')} · ${plural(cont('dup'), 'já lançada', 'já lançadas')} · ${cont('ja')} já conferidas · para revisar: ${cont('semestoque')} sem unidade à venda, ${cont('semprod')} sem SKU/produto, ${cont('revisar')} parcialmente lançadas.<br>
+    ${cont('semprod') ? `<button class="btn btn-sm btn-dark" style="margin:6px 6px 6px 0" data-action="mlVincular">Vincular ${plural(cont('semprod'), 'pedido', 'pedidos')} sem produto</button>` : ''}
     ${cont('semestoque') ? `<button class="btn btn-sm btn-soft" style="margin:6px 0" data-action="mlMarcarBonif">Marcar as ${cont('semestoque')} "sem unidade" como bonificação</button><br>` : ''}
     <span class="hint">Vendas novas dão baixa no estoque. "Bonificação" cria a unidade com fornecedor Bonificação, sem NF e custo 0, e já marca como vendida. As "já lançadas" só ganham o número do pedido, sem duplicar. O frete não vem do ML: nas novas ele fica em branco. Baixe um backup antes de aplicar.</span></div>
   <div class="table-wrap livre" style="margin-top:12px;max-height:48vh;overflow:auto"><table><thead><tr><th></th><th>Data</th><th>SKU</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor un.</th><th>Situação</th></tr></thead><tbody>
@@ -2097,6 +2159,7 @@ const ACOES = {
   },
   importar: () => $('#arquivo-import').click(),
   mlConferir: () => modalConferirML(),
+  mlVincular: () => modalVincularAnuncios(),
   mlMarcarBonif: () => $$('.ml-inc[data-bonif]').forEach(c => { c.checked = true; }),
   mlConectar: async () => {
     try { window.open((await mlChamar('conectar')).url, '_blank'); } catch (e) { toast(e.message, true); }
