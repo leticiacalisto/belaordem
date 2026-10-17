@@ -59,3 +59,24 @@ create table if not exists ml_ads_raw (
   tipo text, url text, status int, corpo jsonb
 );
 alter table ml_ads_raw enable row level security;
+create table if not exists ml_ads_dia (
+  dia date primary key,
+  custo numeric(12,2) not null default 0, cliques int not null default 0, impressoes int not null default 0,
+  vendas numeric(12,2) not null default 0, unidades int not null default 0,
+  direto numeric(12,2) not null default 0, indireto numeric(12,2) not null default 0
+);
+alter table ml_ads_dia enable row level security;
+create table if not exists ml_cobrancas (
+  detail_id bigint primary key, periodo date, criado timestamp, tipo text, subtipo text, descricao text, marketplace text,
+  valor numeric(12,2), bruto numeric(12,2), order_id bigint, item_id text, debitado text, doc_status text
+);
+create index if not exists ml_cobrancas_criado_idx on ml_cobrancas (criado);
+alter table ml_cobrancas enable row level security;
+create or replace function bo_cobrancas_resumo()
+returns table(mes text, subtipo text, descricao text, marketplace text, qtd bigint, valor numeric)
+language sql stable as $$
+  select to_char(criado, 'YYYY-MM'), c.subtipo, max(c.descricao), max(c.marketplace), count(*),
+         sum(case when c.tipo = 'CHARGE' then c.valor else -c.valor end)
+  from ml_cobrancas c where criado is not null
+  group by 1, 2 order by 1 desc, 6 desc;
+$$;

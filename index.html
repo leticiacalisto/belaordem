@@ -396,6 +396,7 @@ const ICON = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
   calendar: '<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="#fbd46d" stroke="#1d1d1d"/>',
+  megaphone: '<path d="M3 11v2a1 1 0 0 0 1 1h2l6 4V6L6 10H4a1 1 0 0 0-1 1zM16 8a5 5 0 0 1 0 8"/>',
   bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 0 0 4 0"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
@@ -599,6 +600,7 @@ const UI = {
   fisicas: { tab: 'pendentes', q: '' },
   encomendas: { tab: 'abertas', q: '' },
   hoje: { data: hojeISO() },
+  mkt: { mes: '' },
   dre: { ano: hojeISO().slice(0, 4) },
   despesas: { periodo: hojeISO().slice(0, 7) },
 };
@@ -662,7 +664,7 @@ const vazioLinha = (cols, msg = 'Nenhum item encontrado.') => `<tr><td class="em
    ========================================================= */
 const NAV = [
   { sec: 'Gestão', itens: [['inicio', 'Início', 'home'], ['produtos', 'Produtos', 'box'], ['estoque', 'Estoque', 'layers'], ['compras', 'Compras', 'truck']] },
-  { sec: 'Vendas', itens: [['hoje', 'Vendas do dia', 'clock'], ['vendas', 'Vendas', 'cart'], ['fisicas', 'Vendas Físicas', 'store'], ['encomendas', 'Encomendas', 'clipboard']] },
+  { sec: 'Vendas', itens: [['hoje', 'Vendas do dia', 'clock'], ['marketing', 'Marketing e custos ML', 'megaphone'], ['vendas', 'Vendas', 'cart'], ['fisicas', 'Vendas Físicas', 'store'], ['encomendas', 'Encomendas', 'clipboard']] },
   { sec: 'Financeiro', itens: [['dre', 'DRE', 'trend'], ['despesas', 'Despesas', 'receipt']] },
 ];
 function renderNav() {
@@ -1529,6 +1531,76 @@ function vHoje() {
     <p class="hint" style="margin-top:14px">Visitas e conversão não vêm pela integração, só os pedidos.</p></section></div></div></div>`;
 }
 
+/* =========================================================
+   Marketing e custos do Mercado Livre
+   Publicidade (Product Ads) pela API de anúncios + cobranças da fatura do ML (tarifas, envio, parcelamento, Mercado Pago, Minha página...)
+   ========================================================= */
+const ehMarketing = c => c.subtipo === 'PADS' || c.marketplace === 'ESHOP' || /publicidade|campanha|cupom|an[uú]ncio|patroc/i.test(c.descricao || '');
+// o lucro do site já desconta a tarifa de venda e o frete de cada pedido; o resto da fatura do ML não está nele
+const jaNoLucro = c => c.subtipo === 'CVVML' || (c.marketplace === 'SHIPPING' && c.subtipo !== 'CDSDB');
+const esperar = ms => new Promise(r => setTimeout(r, ms));
+async function mktCarregar() {
+  try { ML.mkt = await mlChamar('marketing'); ML.mktErro = ''; }
+  catch (e) { ML.mkt = { ads: [], cobrancas: [] }; ML.mktErro = e.message; }
+  ML.mktOk = true; ML.mktCarregando = false;
+  if (UI.view === 'marketing') render();
+}
+function vMarketing() {
+  if (!ML.mktOk) {
+    if (!ML.mktCarregando && sessao()) { ML.mktCarregando = true; mktCarregar(); }
+    if (!ML.pedidos && !ML.hojeCarregando && sessao()) { ML.hojeCarregando = true; mlChamar('status').then(async st => { ML.status = st; if (st.connected) ML.pedidos = await mlListarTudo(); }).catch(() => {}).finally(() => { ML.hojeCarregando = false; if (UI.view === 'marketing') render(); }); }
+    return `<div class="page">${pageHead('Marketing e custos do ML', 'Carregando...')}</div>`;
+  }
+  const ads = (ML.mkt.ads || []).map(a => ({ ...a, custo: +a.custo, cliques: +a.cliques, impressoes: +a.impressoes, vendas: +a.vendas, unidades: +a.unidades }));
+  const cob = (ML.mkt.cobrancas || []).map(c => ({ ...c, valor: +c.valor, qtd: +c.qtd }));
+  const meses = [...new Set([...ads.map(a => a.dia.slice(0, 7)), ...cob.map(c => c.mes)])].sort().reverse();
+  const mes = UI.mkt.mes && meses.includes(UI.mkt.mes) ? UI.mkt.mes : (meses[0] || hojeISO().slice(0, 7));
+  const A = ads.filter(a => a.dia.startsWith(mes)), C = cob.filter(c => c.mes === mes);
+  const tot = f => A.reduce((t, a) => t + f(a), 0);
+  const custo = tot(a => a.custo), vend = tot(a => a.vendas), cliq = tot(a => a.cliques), impr = tot(a => a.impressoes);
+  const fatML = (ML.pedidos || []).filter(o => o.status === 'paid' && dataBR(o.date_created).startsWith(mes)).reduce((t, o) => t + (o.items?.[0] ? o.items[0].unit_price * (o.items[0].qty || 1) : 0), 0);
+  const lucroSite = sum(DB.estoque.filter(u => u.status === 'vendido' && !u.vendaFisica && u.dVenda && u.dVenda.startsWith(mes)), lucro);
+  const faturado = C.reduce((t, c) => t + c.valor, 0), extras = C.filter(c => !jaNoLucro(c)).reduce((t, c) => t + c.valor, 0);
+  const mkt = C.filter(ehMarketing).reduce((t, c) => t + c.valor, 0);
+  const kpi = (l, v, extra = '') => `<div class="kpi"><div class="kpi-l">${l}</div><div class="kpi-v">${v}</div>${extra}</div>`;
+  const dias = A.length ? A : [];
+  const maxC = Math.max(0.01, ...dias.map(d => d.custo)), maxV = Math.max(0.01, ...dias.map(d => d.vendas));
+  const barras = (campo, mx, cor) => `<div class="hoje-bars" style="grid-template-columns:repeat(${Math.max(dias.length, 1)},1fr);height:90px">${dias.map(d => `<div class="hoje-col" title="${fdata(d.dia)}: ${brl(d[campo])}"><div class="b" style="height:${(d[campo] / mx * 100).toFixed(1)}%;background:${cor}"></div></div>`).join('')}</div><div class="hoje-eixo" style="grid-template-columns:repeat(${Math.max(dias.length, 1)},1fr)">${dias.map(d => `<span>${+d.dia.slice(8, 10) % 5 === 0 || +d.dia.slice(8, 10) === 1 ? +d.dia.slice(8, 10) : ''}</span>`).join('')}</div>`;
+  // tendência por mês
+  const linhas = meses.map(m => {
+    const a = ads.filter(x => x.dia.startsWith(m)), c = cob.filter(x => x.mes === m);
+    const ca = a.reduce((t, x) => t + x.custo, 0), va = a.reduce((t, x) => t + x.vendas, 0);
+    const ex = c.filter(x => !jaNoLucro(x)).reduce((t, x) => t + x.valor, 0);
+    const fat = (ML.pedidos || []).filter(o => o.status === 'paid' && dataBR(o.date_created).startsWith(m)).reduce((t, o) => t + (o.items?.[0] ? o.items[0].unit_price * (o.items[0].qty || 1) : 0), 0);
+    return { m, ca, va, ex, fat };
+  });
+  const faltaAds = !ads.length, faltaCob = !cob.length;
+  return `<div class="page">${pageHead('Marketing e custos do ML', 'Anúncios patrocinados e tudo que o Mercado Livre cobra além da tarifa de venda', `<button class="btn" data-action="mktAds" ${ML.ocupado ? 'disabled' : ''}>Atualizar publicidade</button><button class="btn" data-action="mktCobr" ${ML.ocupado ? 'disabled' : ''}>${ML.ocupado && ML.progresso ? esc(ML.progresso) : 'Atualizar cobranças'}</button>${select('mkt.mes', mes, meses.map(m => [m, nomeMes(m)]), 'Mês')}`)}
+  ${ML.mktErro ? `<div class="info" style="margin-bottom:14px">Não consegui ler os dados: ${esc(ML.mktErro)}</div>` : ''}
+  ${faltaAds || faltaCob ? `<div class="info" style="margin-bottom:14px">${faltaAds ? 'Clique em <b>Atualizar publicidade</b> para trazer o histórico dos anúncios patrocinados. ' : ''}${faltaCob ? 'Clique em <b>Atualizar cobranças</b> para trazer a fatura do ML (pode levar alguns minutos na primeira vez).' : ''}</div>` : ''}
+  <div class="card block" style="margin-bottom:22px"><div class="hoje-grid">
+    ${kpi('Investimento em anúncios', brl(custo), `<div class="hint">${pct(fatML ? custo / fatML : null)} do faturamento do mês</div>`)}
+    ${kpi('Vendas pelos anúncios', brl(vend), `<div class="hint">${A.reduce((t, a) => t + a.unidades, 0)} unidades atribuídas</div>`)}
+    ${kpi('ACOS', pct(vend ? custo / vend : null), `<div class="hint">quanto do que vende pelos anúncios vira gasto</div>`)}
+    ${kpi('Retorno (ROAS)', custo ? (vend / custo).toFixed(1) + '×' : '—', `<div class="hint">R$ vendidos por R$ investido</div>`)}
+  </div><div class="hoje-grid" style="border-top:1px solid var(--line-2)">
+    ${kpi('Impressões', impr.toLocaleString('pt-BR'), `<div class="hint">${cliq.toLocaleString('pt-BR')} cliques · CTR ${pct(impr ? cliq / impr : null)}</div>`)}
+    ${kpi('Custo por clique', brl(cliq ? custo / cliq : null))}
+    ${kpi('Cobrado na fatura em marketing', brl(mkt), `<div class="hint">anúncios + Minha página + campanhas</div>`)}
+    ${kpi('Lucro do site depois dos extras', brl(lucroSite - extras), `<div class="hint">${brl(lucroSite)} do site − ${brl(extras)} cobrados a mais pelo ML</div>`)}
+  </div></div>
+  <section class="block"><div class="sec-head"><h2>Investimento por dia</h2><span class="hint">${nomeMes(mes)}</span></div>${dias.length ? barras('custo', maxC, 'var(--accent-2)') : '<p class="hint">Sem dados de anúncios neste mês.</p>'}
+    <div class="sec-head" style="margin-top:18px"><h2>Vendas atribuídas aos anúncios por dia</h2></div>${dias.length ? barras('vendas', maxV, '#14958a') : ''}</section>
+  <section class="block"><div class="sec-head"><h2>Tudo que o ML cobrou em ${nomeMes(mes)}</h2><span class="hint">${brl(faturado)} no total · faturamento do mês ${brl(fatML)}</span></div>
+    <div class="table-wrap livre"><table><thead><tr><th>Cobrança</th><th>Código</th><th class="num">Qtd</th><th class="num">Valor</th><th class="num">% do faturamento</th><th>No lucro do site?</th></tr></thead><tbody>
+    ${C.sort((a, b) => b.valor - a.valor).map(c => `<tr><td>${esc(c.descricao || '—')}${ehMarketing(c) ? ' <span class="chip c-purple">marketing</span>' : ''}</td><td class="muted">${esc(c.subtipo || '')}</td><td class="num">${c.qtd}</td><td class="num">${brl(c.valor)}</td><td class="num">${pct(fatML ? c.valor / fatML : null)}</td><td>${jaNoLucro(c) ? '<span class="chip c-green">já descontado</span>' : '<span class="chip c-orange">fora do lucro</span>'}</td></tr>`).join('') || vazioLinha(6, 'Sem cobranças neste mês. Clique em Atualizar cobranças.')}
+    </tbody></table></div><p class="hint" style="margin-top:8px">O lucro das vendas no site considera a tarifa de venda e o frete de cada pedido. O que está marcado "fora do lucro" (parcelamento, Mercado Pago, anúncios, manutenção da loja, devoluções...) é cobrado na fatura mas não entra na conta de cada venda.</p></section>
+  <section class="block"><div class="sec-head"><h2>Mês a mês</h2></div>
+    <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Anúncios (custo)</th><th class="num">Vendas pelos anúncios</th><th class="num">ACOS</th><th class="num">Extras do ML fora do lucro</th><th class="num">% do faturamento</th></tr></thead><tbody>
+    ${linhas.map(l => `<tr class="clic" data-action="set" data-path="mkt.mes" data-value="${l.m}"><td>${nomeMes(l.m)}</td><td class="num">${brl(l.ca)}</td><td class="num">${brl(l.va)}</td><td class="num">${pct(l.va ? l.ca / l.va : null)}</td><td class="num">${brl(l.ex)}</td><td class="num">${pct(l.fat ? l.ex / l.fat : null)}</td></tr>`).join('') || vazioLinha(6, 'Sem dados ainda.')}
+    </tbody></table></div></section></div>`;
+}
+
 /* Sincronização automática ao abrir o site: traz os pedidos recentes e os fretes, lança sozinho só o que é seguro
    (últimos 14 dias, anúncio com um único produto possível) e devolve ao estoque o que o ML cancelou.
    O que for duvidoso (sem estoque, sem vínculo, provável) fica para você revisar em "Conferir com meu estoque". */
@@ -2352,7 +2424,7 @@ function fecharBusca() { const b = $('#busca-global'); b.value = ''; renderBusca
 /* =========================================================
    Renderização e navegação
    ========================================================= */
-const VIEWS = { hoje: vHoje, inicio: vInicio, produtos: vProdutos, estoque: vEstoque, compras: vCompras, vendas: vVendas, fisicas: vFisicas, encomendas: vEncomendas, dre: vDRE, despesas: vDespesas, config: vConfig };
+const VIEWS = { marketing: vMarketing, hoje: vHoje, inicio: vInicio, produtos: vProdutos, estoque: vEstoque, compras: vCompras, vendas: vVendas, fisicas: vFisicas, encomendas: vEncomendas, dre: vDRE, despesas: vDespesas, config: vConfig };
 function render() {
   const a = document.activeElement;
   const id = a && a.id && $('#main').contains(a) ? a.id : null;
@@ -2523,6 +2595,37 @@ const ACOES = {
       ML.adsMsg = `Teste de publicidade: ${r.passos.join(' · ')}${r.anunciantes ? '' : ' · nenhum anunciante encontrado'}`;
       toast(ML.adsMsg);
     } catch (e) { ML.adsMsg = `Teste de publicidade falhou: ${e.message}`; toast(e.message, true); }
+    ML.ocupado = false; ML.progresso = ''; render();
+  },
+  mktAds: async () => {
+    ML.ocupado = true; ML.progresso = ''; render();
+    try {
+      const r = await mlChamar('ads_sync', { desde: '2025-11-01', ate: hojeISO() });
+      toast(`Publicidade atualizada: ${plural(r.dias, 'dia', 'dias')}`);
+      await mktCarregar();
+    } catch (e) { toast(e.message, true); }
+    ML.ocupado = false; render();
+  },
+  mktCobr: async () => {
+    ML.ocupado = true; ML.progresso = 'Buscando períodos...'; render();
+    try {
+      let { periodos } = await mlChamar('cobranca_periodos');
+      if (ML.mkt?.cobrancas?.length) periodos = periodos.slice(0, 2);      // já temos o histórico: só os 2 períodos mais recentes
+      let gravados = 0;
+      for (const per of periodos) {
+        let off = 0;
+        for (;;) {
+          ML.progresso = `Fatura ${per.key.slice(0, 7)}... (${gravados} lidas)`; render();
+          const r = await mlChamar('cobrancas', { key: per.key, offset: off, paginas: 4 });
+          gravados += r.gravados;
+          if (r.espera) { await esperar(5000); off = r.proximo; continue; }
+          if (r.proximo == null) break;
+          off = r.proximo;
+        }
+      }
+      toast(`Cobranças atualizadas: ${gravados} lançamentos lidos`);
+      await mktCarregar();
+    } catch (e) { toast(e.message, true); }
     ML.ocupado = false; ML.progresso = ''; render();
   },
   mlConferir: () => modalConferirML(),

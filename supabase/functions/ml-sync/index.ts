@@ -94,6 +94,69 @@ async function adsTeste() {
   return { passos, anunciantes: lista.length, advertiser: id ?? null };
 }
 
+// ---- Publicidade (Product Ads): custo, cliques, impressões e vendas atribuídas, por dia
+async function adsSync(desde: string, ate: string) {
+  const { token } = await getAccess();
+  const a = await fetch("https://api.mercadolibre.com/advertising/advertisers?product_id=PADS", { headers: { Authorization: `Bearer ${token}`, "Api-Version": "1" } });
+  const aj = await a.json().catch(() => ({}));
+  const adv = aj?.advertisers?.[0];
+  if (!a.ok || !adv) throw new Error(`Product Ads: ${a.status} ${aj?.message ?? "conta sem anunciante"}`);
+  let total = 0;
+  const fimTotal = new Date(ate + "T00:00:00Z").getTime();
+  for (let ini = new Date(desde + "T00:00:00Z").getTime(); ini <= fimTotal;) {
+    const fim = Math.min(ini + 59 * 86_400_000, fimTotal);
+    const d1 = new Date(ini).toISOString().slice(0, 10), d2 = new Date(fim).toISOString().slice(0, 10);
+    const u = `https://api.mercadolibre.com/advertising/${adv.site_id}/advertisers/${adv.advertiser_id}/product_ads/campaigns/search?date_from=${d1}&date_to=${d2}&metrics=clicks,prints,cost,cpc,acos,total_amount,units_quantity,direct_amount,indirect_amount&aggregation_type=DAILY`;
+    const r = await fetch(u, { headers: { Authorization: `Bearer ${token}`, "api-version": "2" } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(`Product Ads ${d1}: ${r.status} ${j?.message ?? ""}`);
+    const rows = (j.results ?? []).filter((x: any) => x.date).map((x: any) => ({
+      dia: x.date, custo: x.cost ?? 0, cliques: x.clicks ?? 0, impressoes: x.prints ?? 0, vendas: x.total_amount ?? 0,
+      unidades: x.units_quantity ?? 0, direto: x.direct_amount ?? 0, indireto: x.indirect_amount ?? 0,
+    }));
+    if (rows.length) { const { error } = await db.from("ml_ads_dia").upsert(rows); if (error) throw error; }
+    total += rows.length;
+    ini = fim + 86_400_000;
+  }
+  return total;
+}
+
+// ---- Cobranças do ML (faturamento): tarifa de venda, envio, parcelamento, Mercado Pago, Product Ads, Minha página, devoluções...
+async function cobrancaPeriodos() {
+  const { token } = await getAccess();
+  const r = await fetch("https://api.mercadolibre.com/billing/integration/monthly/periods?group=ML&document_type=BILL&limit=12", { headers: { Authorization: `Bearer ${token}` } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`Faturamento: ${r.status} ${j?.message ?? ""}`);
+  return (j.results ?? []).map((x: any) => ({ key: x.key, de: x.period?.date_from, ate: x.period?.date_to, valor: x.amount, status: x.period_status }));
+}
+async function cobrancas(key: string, offset: number, paginas: number) {
+  const { token } = await getAccess();
+  let gravados = 0, total = 0, off = offset;
+  for (let i = 0; i < paginas; i++) {
+    const r = await fetch(`https://api.mercadolibre.com/billing/integration/periods/key/${key}/group/ML/details?document_type=BILL&limit=150&offset=${off}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (r.status === 429) return { proximo: off, total, gravados, espera: true };
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(`Faturamento ${key}: ${r.status} ${j?.message ?? ""}`);
+    total = j.total ?? total;
+    const rows = (j.results ?? []).map((x: any) => {
+      const c = x.charge_info ?? {};
+      return {
+        detail_id: c.detail_id, periodo: key, criado: c.creation_date_time ?? null, tipo: c.detail_type ?? null, subtipo: c.detail_sub_type ?? null,
+        descricao: c.transaction_detail ?? null, marketplace: x.marketplace_info?.marketplace ?? null, valor: c.detail_amount ?? 0,
+        bruto: x.discount_info?.charge_amount_without_discount ?? null,
+        order_id: x.sales_info?.[0]?.order_id ?? x.items_info?.[0]?.order_id ?? null, item_id: x.items_info?.[0]?.item_id ?? null,
+        debitado: c.debited_from_operation ?? null, doc_status: c.legal_document_status ?? null,
+      };
+    }).filter((x: any) => x.detail_id);
+    if (rows.length) { const { error } = await db.from("ml_cobrancas").upsert(rows); if (error) throw error; }
+    gravados += rows.length;
+    off += 150;
+    if (off >= total || !(j.results ?? []).length) return { proximo: null, total, gravados };
+    await new Promise((res) => setTimeout(res, 250));
+  }
+  return { proximo: off, total, gravados };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (!(await autenticar(req))) return json({ error: "não autorizado" }, 401);
@@ -113,6 +176,16 @@ Deno.serve(async (req) => {
       let n = await sync(desde, ate);
       if (arq) { try { n += await sync(desde, ate, true); } catch (_) { /* conta sem arquivados */ } }
       return json({ synced: n });
+    }
+    if (action === "ads_sync") return json({ dias: await adsSync(String(body.desde), String(body.ate)) });
+    if (action === "cobranca_periodos") return json({ periodos: await cobrancaPeriodos() });
+    if (action === "cobrancas") return json(await cobrancas(String(body.key), Number(body.offset) || 0, Math.min(Number(body.paginas) || 4, 8)));
+    if (action === "marketing") {
+      const { data: ads, error: e1 } = await db.from("ml_ads_dia").select("*").order("dia");
+      if (e1) throw e1;
+      const { data: cob, error: e2 } = await db.rpc("bo_cobrancas_resumo");
+      if (e2) throw e2;
+      return json({ ads, cobrancas: cob });
     }
     if (action === "ads_teste") return json(await adsTeste());
     if (action === "fretes") return json(await fretes(Math.min(Number(body.limite) || 60, 100)));
