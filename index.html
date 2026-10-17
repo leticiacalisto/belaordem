@@ -1117,7 +1117,7 @@ function cardML() {
         <button class="btn" data-action="mlFretes" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Buscar fretes do ML</button>
         <button class="btn" data-action="mlAplicarFretes" ${ML.pedidos?.some(o => o.frete_vendedor != null) ? '' : 'disabled'}>Aplicar fretes nas vendas</button>
         <button class="btn" data-action="mlConferir" ${ML.pedidos?.length ? '' : 'disabled'}>Conferir com meu estoque</button>
-      </div>${tabela}`;
+      </div>${ML.autoMsg ? `<p class="hint" style="margin:8px 0 0">${esc(ML.autoMsg)}</p>` : ''}${mlDivergencias()}${tabela}`;
   }
   return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Mercado Livre</h2></div>${corpo}</div>`;
 }
@@ -1256,22 +1256,8 @@ const ML_ESTADOS = {
   semprod: ['c-red', 'Anúncio sem produto: vincule', false],
 };
 
-function modalConferirML() {
-  const linhas = mlAnalisar();
-  const cont = e => linhas.filter(l => l.estado === e).length;
-  const mostrar = linhas.filter(l => l.estado !== 'ja');
-  const corpo = `<div class="info">${plural(cont('nova'), 'venda nova', 'vendas novas')} · ${plural(cont('dup'), 'já lançada', 'já lançadas')} · ${cont('ja')} já conferidas · ${plural(cont('bonif'), 'bonificação', 'bonificações')} · para revisar: ${cont('semestoque')} sem unidade à venda, ${cont('semprod')} sem SKU/produto, ${cont('revisar')} parcialmente lançadas.<br>
-    ${cont('semprod') ? `<button class="btn btn-sm btn-dark" style="margin:6px 6px 6px 0" data-action="mlVincular">Vincular ${plural(cont('semprod'), 'pedido', 'pedidos')} sem produto</button>` : ''}
-    ${cont('semestoque') ? `<button class="btn btn-sm btn-soft" style="margin:6px 0" data-action="mlMarcarBonif">Marcar as ${cont('semestoque')} "sem unidade" como bonificação</button><br>` : ''}
-    <span class="hint">Vendas novas dão baixa no estoque. "Bonificação" cria a unidade com fornecedor Bonificação, sem NF e custo 0, e já marca como vendida. As "já lançadas" só ganham o número do pedido, sem duplicar. As "já lançadas" e "prováveis" passam a ter valor, taxa, data e frete iguais aos do ML. Se o frete ainda não foi buscado, ele fica em branco. Baixe um backup antes de aplicar.</span></div>
-  <div class="table-wrap livre" style="margin-top:12px;max-height:48vh;overflow:auto"><table><thead><tr><th></th><th>Data</th><th>SKU</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor un.</th><th>Situação</th></tr></thead><tbody>
-  ${mostrar.map(l => { const [cor, txt, marcavel] = ML_ESTADOS[l.estado]; const k = linhas.indexOf(l);
-    return `<tr><td><input type="checkbox" class="ml-inc" data-k="${k}" ${l.estado === 'semestoque' || l.estado === 'bonif' ? 'data-bonif="1"' : ''} ${marcavel && l.estado !== 'semestoque' && l.estado !== 'prov' ? 'checked' : ''} ${marcavel ? '' : 'disabled'} aria-label="Aplicar"></td><td>${fdata(l.data)}</td><td class="muted">${esc(l.it.sku ?? '—')}</td><td>${esc(l.prod ? l.prod.nome : l.it.title)}</td><td class="num">${l.qtd}</td><td class="num">${brl(l.it.unit_price)}</td><td><span class="chip ${cor}">${esc(l.rotulo || txt)}</span></td></tr>`; }).join('') || vazioLinha(7, 'Nada para conferir.')}
-  </tbody></table></div>`;
-  abrirModal({
-    titulo: 'Conferir pedidos do Mercado Livre', corpo, largura: 980, rodape: rodapePadrao('Aplicar marcados'), dados: { linhasML: linhas },
-    onConfirm: () => {
-      const marcados = $$('.ml-inc:checked').map(c => MODAL.linhasML[+c.dataset.k]);
+/* Aplica as linhas da conferência (venda nova, já lançada, bonificação). Usada pela tela e pela sincronização automática. */
+function aplicarLinhasML(marcados) {
       let novas = 0, vinc = 0, novas_boni = 0;
       for (const l of marcados) {
         const us = DB.estoque.filter(u => l.ids.includes(u.id));
@@ -1297,9 +1283,99 @@ function modalConferirML() {
           vinc += us.length;
         }
       }
+  return { novas, vinc, novas_boni };
+}
+
+function modalConferirML() {
+  const linhas = mlAnalisar();
+  const cont = e => linhas.filter(l => l.estado === e).length;
+  const mostrar = linhas.filter(l => l.estado !== 'ja');
+  const corpo = `<div class="info">${plural(cont('nova'), 'venda nova', 'vendas novas')} · ${plural(cont('dup'), 'já lançada', 'já lançadas')} · ${cont('ja')} já conferidas · ${plural(cont('bonif'), 'bonificação', 'bonificações')} · para revisar: ${cont('semestoque')} sem unidade à venda, ${cont('semprod')} sem SKU/produto, ${cont('revisar')} parcialmente lançadas.<br>
+    ${cont('semprod') ? `<button class="btn btn-sm btn-dark" style="margin:6px 6px 6px 0" data-action="mlVincular">Vincular ${plural(cont('semprod'), 'pedido', 'pedidos')} sem produto</button>` : ''}
+    ${cont('semestoque') ? `<button class="btn btn-sm btn-soft" style="margin:6px 0" data-action="mlMarcarBonif">Marcar as ${cont('semestoque')} "sem unidade" como bonificação</button><br>` : ''}
+    <span class="hint">Vendas novas dão baixa no estoque. "Bonificação" cria a unidade com fornecedor Bonificação, sem NF e custo 0, e já marca como vendida. As "já lançadas" só ganham o número do pedido, sem duplicar. As "já lançadas" e "prováveis" passam a ter valor, taxa, data e frete iguais aos do ML. Se o frete ainda não foi buscado, ele fica em branco. Baixe um backup antes de aplicar.</span></div>
+  <div class="table-wrap livre" style="margin-top:12px;max-height:48vh;overflow:auto"><table><thead><tr><th></th><th>Data</th><th>SKU</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor un.</th><th>Situação</th></tr></thead><tbody>
+  ${mostrar.map(l => { const [cor, txt, marcavel] = ML_ESTADOS[l.estado]; const k = linhas.indexOf(l);
+    return `<tr><td><input type="checkbox" class="ml-inc" data-k="${k}" ${l.estado === 'semestoque' || l.estado === 'bonif' ? 'data-bonif="1"' : ''} ${marcavel && l.estado !== 'semestoque' && l.estado !== 'prov' ? 'checked' : ''} ${marcavel ? '' : 'disabled'} aria-label="Aplicar"></td><td>${fdata(l.data)}</td><td class="muted">${esc(l.it.sku ?? '—')}</td><td>${esc(l.prod ? l.prod.nome : l.it.title)}</td><td class="num">${l.qtd}</td><td class="num">${brl(l.it.unit_price)}</td><td><span class="chip ${cor}">${esc(l.rotulo || txt)}</span></td></tr>`; }).join('') || vazioLinha(7, 'Nada para conferir.')}
+  </tbody></table></div>`;
+  abrirModal({
+    titulo: 'Conferir pedidos do Mercado Livre', corpo, largura: 980, rodape: rodapePadrao('Aplicar marcados'), dados: { linhasML: linhas },
+    onConfirm: () => {
+      const marcados = $$('.ml-inc:checked').map(c => MODAL.linhasML[+c.dataset.k]);
+      const r = aplicarLinhasML(marcados);
+      const { novas, vinc, novas_boni } = r;
       commit(`${plural(novas, 'unidade vendida', 'unidades vendidas')}, ${plural(vinc, 'vinculada', 'vinculadas')}, ${plural(novas_boni, 'bonificação', 'bonificações')}`);
     },
   });
+}
+
+/* Sincronização automática ao abrir o site: traz os pedidos recentes e os fretes, lança sozinho só o que é seguro
+   (últimos 14 dias, anúncio com um único produto possível) e devolve ao estoque o que o ML cancelou.
+   O que for duvidoso (sem estoque, sem vínculo, provável) fica para você revisar em "Conferir com meu estoque". */
+const AUTO_DIAS = 14;
+async function mlAuto() {
+  if (ML.autoRodou || !sessao() || !DB?.produtos?.length || nuvemBloqueada) return;
+  ML.autoRodou = true;
+  try {
+    ML.status = await mlChamar('status');
+    if (!ML.status.connected) return;
+    ML.autoMsg = 'Sincronizando com o Mercado Livre...'; if (UI.view === 'config') render();
+    await mlChamar('sync', { days: 10 });
+    for (let k = 0; k < 6; k++) { const r = await mlChamar('fretes', { limite: 60 }); if (!r.restantes || !r.feitos) break; }
+    ML.pedidos = await mlListarTudo();
+    const desde = new Date(Date.now() - AUTO_DIAS * 864e5).toISOString().slice(0, 10);
+    const linhas = mlAnalisar().filter(l => l.data >= desde);
+    const seguras = linhas.filter(l => ['dup', 'nova', 'bonif'].includes(l.estado) && candidatosMl(l.it).length === 1);
+    const r = seguras.length ? aplicarLinhasML(seguras) : { novas: 0, vinc: 0, novas_boni: 0 };
+    // fretes reais nas unidades ligadas que ainda estão sem frete
+    const por = {}; DB.estoque.forEach(u => { if (u.mlPedido) (por[u.mlPedido] = por[u.mlPedido] || []).push(u); });
+    let fretes = 0;
+    for (const o of ML.pedidos) {
+      const us = por[o.id]; if (!us || o.frete_vendedor == null) continue;
+      const f = Math.round(Number(o.frete_vendedor) / us.length * 100) / 100;
+      for (const u of us) if (u.frete == null) { u.frete = f; fretes++; }
+    }
+    // pedidos cancelados nos últimos 30 dias: a unidade volta ao estoque
+    const desde30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+    let devol = 0;
+    for (const o of ML.pedidos) {
+      if (o.status !== 'cancelled' || dataBR(o.date_created) < desde30) continue;
+      const us = DB.estoque.filter(u => u.mlPedido === o.id && u.status === 'vendido');
+      if (us.length) { devolverUnidades(us); us.forEach(u => { u.mlPedido = null; }); devol += us.length; }
+    }
+    const revisar = linhas.filter(l => ['semestoque', 'semprod', 'prov', 'revisar'].includes(l.estado)).length;
+    const partes = [];
+    if (r.novas + r.novas_boni) partes.push(`${plural(r.novas + r.novas_boni, 'venda lançada', 'vendas lançadas')}`);
+    if (r.vinc) partes.push(`${r.vinc} já existente(s) alinhada(s)`);
+    if (fretes) partes.push(`${plural(fretes, 'frete', 'fretes')}`);
+    if (devol) partes.push(`${plural(devol, 'devolução', 'devoluções')}`);
+    ML.autoMsg = partes.length || revisar ? `Última sincronização: ${partes.join(', ') || 'nada novo'}${revisar ? ` · ${plural(revisar, 'pedido', 'pedidos')} para revisar` : ''}` : 'Mercado Livre em dia';
+    if (partes.length) { commit(); toast(`Mercado Livre: ${partes.join(', ')}${revisar ? ` · ${revisar} para revisar` : ''}`); }
+    else if (UI.view === 'config') render();
+  } catch (e) { ML.autoMsg = `Sincronização automática falhou: ${e.message}`; if (UI.view === 'config') render(); }
+}
+
+/* Mês a mês: o que o ML informou (pedidos pagos) contra o que o site tem lançado como venda do ML. Tem que bater. */
+function mlDivergencias() {
+  if (!ML.pedidos?.length) return '';
+  const m = {};
+  const lin = k => m[k] = m[k] || { mu: 0, mv: 0, su: 0, sv: 0 };
+  for (const o of ML.pedidos) {
+    if (o.status !== 'paid') continue;
+    const it = o.items?.[0]; if (!it) continue;
+    const x = lin(dataBR(o.date_created).slice(0, 7)); x.mu += it.qty || 1; x.mv += (it.unit_price || 0) * (it.qty || 1);
+  }
+  for (const u of DB.estoque) {
+    if (u.status !== 'vendido' || u.vendaFisica || !u.dVenda) continue;
+    const x = lin(u.dVenda.slice(0, 7)); x.su++; x.sv += u.venda || 0;
+  }
+  const meses = Object.keys(m).sort().slice(-6).reverse();
+  const tot = meses.reduce((t, k) => t + Math.abs(m[k].su - m[k].mu), 0);
+  return `<div class="sub-title" style="margin-top:16px">Conferência mês a mês: ML contra site ${tot ? `<span class="chip c-orange">${tot} unidade(s) de diferença</span>` : '<span class="chip c-green">tudo batendo</span>'}</div>
+    <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">ML un.</th><th class="num">Site un.</th><th class="num">Dif.</th><th class="num">ML R$</th><th class="num">Site R$</th><th class="num">Dif. R$</th></tr></thead><tbody>
+    ${meses.map(k => { const x = m[k], du = x.su - x.mu, dv = x.sv - x.mv; const cls = Math.abs(du) || Math.abs(dv) > 1 ? 'neg' : '';
+      return `<tr><td>${nomeMes(k)}</td><td class="num">${x.mu}</td><td class="num">${x.su}</td><td class="num ${cls}">${du}</td><td class="num">${brl(x.mv)}</td><td class="num">${brl(x.sv)}</td><td class="num ${cls}">${brl(dv)}</td></tr>`; }).join('')}
+    </tbody></table></div>`;
 }
 
 async function mlAtualizar() {
@@ -1608,7 +1684,7 @@ function produtoPorEan(ean) {
   const c = DB.produtos.filter(p => soEan(p.ean) === e || (p.eanAlt || []).some(a => soEan(a) === e));
   return c.find(p => !/^kit\b/i.test(p.nome)) || c[0] || null;
 }
-const ignorarItemNota = nome => (DB.config.ignorarNotas || []).some(k => norm(nome).includes(norm(k)));
+const ignorarItemNota = (nome, ean) => (DB.config.ignorarNotas || []).some(k => norm(nome).includes(norm(k))) || (!!ean && (DB.config.ignorarEan || []).some(e => soEan(e) === soEan(ean)));
 /* Lê o XML da NF-e (nfeProc ou NFe): fornecedor, número, data e itens com custo unitário
    (produtos + frete + seguro + outras despesas − desconto, dividido pela quantidade). */
 function lerNFe(texto) {
@@ -1637,7 +1713,7 @@ function lerNFe(texto) {
 }
 function importarNFe(texto) {
   const nfe = lerNFe(texto);
-  if (nfe) nfe.itens = nfe.itens.filter(i => !ignorarItemNota(i.nome) || produtoPorEan(i.ean));
+  if (nfe) nfe.itens = nfe.itens.filter(i => !ignorarItemNota(i.nome, i.ean) || produtoPorEan(i.ean));
   if (!nfe || !nfe.itens.length) return erro('Este arquivo não parece o XML de uma NF-e.');
   const so = x => String(x || '').replace(/\D/g, '');
   const achar = it => produtoPorEan(it.ean) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null;
@@ -1678,7 +1754,7 @@ function analisarNotasCompra(arquivos) {
     vistas.add(id);
     const forn = DB.config.fornecedores.find(f => mesmoForn(nfe.fornecedor, f)) || nfe.fornecedor;
     const itens = nfe.itens.map(it => ({ ...it, prod: produtoPorEan(it.ean) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null }))
-      .filter(i => i.prod || !ignorarItemNota(i.nome));
+      .filter(i => i.prod || !ignorarItemNota(i.nome, i.ean));
     const total = itens.filter(i => i.prod).reduce((t, i) => t + i.qtd, 0);
     const doMesmoNf = DB.estoque.filter(u => (nfe.chave && u.nfCompra === nfe.chave) || (nfNum(u.nf) && nfNum(u.nf) === nfNum(nfe.nf) && mesmoForn(u.fornecedor, forn)));
     const outroForn = !doMesmoNf.length && nfNum(nfe.nf) && DB.estoque.some(u => nfNum(u.nf) === nfNum(nfe.nf));
@@ -2458,6 +2534,7 @@ async function iniciarApp() {
   await carregarNuvem();
   UI.view = VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'inicio';
   render();
+  mlAuto();
 }
 
 /* ---------- início ---------- */

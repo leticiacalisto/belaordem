@@ -94,3 +94,49 @@ export async function urlConectar() {
   a.searchParams.set("state", await makeState());
   return a.toString();
 }
+
+// ---- pedido do ML -> linha da tabela ml_orders (usado pela sincronização e pelo webhook)
+export function linhaPedido(o: any) {
+  return {
+    id: o.id,
+    date_created: o.date_created,
+    status: o.status,
+    total_amount: o.total_amount,
+    paid_amount: o.paid_amount,
+    sale_fee: (o.order_items ?? []).reduce((s: number, i: any) => s + (i.sale_fee ?? 0) * i.quantity, 0),
+    shipping_id: o.shipping?.id ?? null,
+    buyer_nickname: o.buyer?.nickname ?? null,
+    pack_id: o.pack_id ?? null,
+    date_closed: o.date_closed ?? null,
+    pagamentos: (o.payments ?? []).map((p: any) => ({
+      id: p.id, status: p.status, metodo: p.payment_method_id, parcelas: p.installments,
+      valor: p.transaction_amount, total_pago: p.total_paid_amount, tarifa: p.marketplace_fee,
+      frete_comprador: p.shipping_cost, impostos: p.taxes_amount, aprovado_em: p.date_approved,
+    })),
+    frete_comprador: (o.payments ?? []).reduce((t: number, p: any) => t + (p.shipping_cost ?? 0), 0),
+    items: (o.order_items ?? []).map((i: any) => ({
+      item_id: i.item?.id, title: i.item?.title,
+      sku: i.item?.seller_sku ?? i.item?.seller_custom_field ?? null,
+      qty: i.quantity, unit_price: i.unit_price, sale_fee: i.sale_fee,
+    })),
+    synced_at: new Date().toISOString(),
+  };
+}
+
+// ---- frete que o VENDEDOR paga + status/tipo do envio
+export async function freteDe(token: string, shippingId: number) {
+  const h = { Authorization: `Bearer ${token}`, "x-format-new": "true" };
+  const [c, e] = await Promise.all([
+    fetch(`https://api.mercadolibre.com/shipments/${shippingId}/costs`, { headers: h }),
+    fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, { headers: h }),
+  ]);
+  const semEnvio = c.status === 404 && e.status === 404;
+  if (!semEnvio && !c.ok && !e.ok) throw new Error(`HTTP ${c.status}/${e.status}`);
+  const cj = c.ok ? await c.json() : null, ej = e.ok ? await e.json() : null;
+  return {
+    frete_vendedor: cj?.senders?.[0]?.cost ?? null,
+    envio_status: ej?.status ?? null,
+    envio_tipo: ej?.logistic_type ?? ej?.logistic?.type ?? null,
+    frete_em: new Date().toISOString(),
+  };
+}
