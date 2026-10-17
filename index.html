@@ -1100,6 +1100,7 @@ async function mlChamar(action, extra = {}) {
 }
 
 function cardML() {
+  if (!ML.status && !ML.verificando && sessao()) { ML.verificando = true; setTimeout(mlAtualizar, 0); }
   let corpo;
   {
     const s = ML.status;
@@ -1211,10 +1212,12 @@ function modalConferirML() {
 }
 
 async function mlAtualizar() {
+  ML.verificando = true;
   try {
     ML.status = await mlChamar('status');
     if (ML.status.connected) ML.pedidos = await mlListarTudo();
   } catch (e) { ML.status = { connected: false }; toast(e.message, true); }
+  ML.verificando = false;
   if (UI.view === 'config') render();
 }
 
