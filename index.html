@@ -289,6 +289,29 @@ td.empty-cell{padding:40px;text-align:center;color:var(--faint);white-space:norm
 .login-card h1{margin:0 0 4px;font-size:22px}.login-card p{margin:0 0 20px;color:#6b6b76;font-size:14px}
 .login-card .f{margin-bottom:14px}.login-card .btn{width:100%;justify-content:center;margin-top:6px}
 .login-card .login-erro{color:#a2282e;font-size:13px;min-height:18px;margin:8px 0 0}
+
+.notif-btn{position:relative}
+.notif-badge{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:10.5px;font-weight:500;display:grid;place-items:center;border:2px solid #fff}
+.notif-panel{position:fixed;top:64px;right:18px;width:min(430px,calc(100vw - 24px));max-height:calc(100vh - 90px);overflow:auto;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(40,30,80,.18);z-index:60}
+.notif-head{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:#fff;z-index:1}
+.notif-head h3{margin:0;font-size:15px;font-weight:500}
+.notif-sec{padding:12px 16px 6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+.notif-item{display:flex;gap:10px;padding:10px 16px;border-top:1px solid var(--line-2);align-items:flex-start}
+.notif-item.nova{background:#faf7ff}
+.notif-item .tx{flex:1;min-width:0;line-height:1.4}.notif-item b{font-weight:500}
+.notif-item .dt{font-size:11px;color:var(--faint);margin-top:2px}
+.notif-dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:none;background:var(--accent)}
+.notif-dot.alta{background:var(--red)}.notif-dot.media{background:var(--yel)}.notif-dot.ok{background:var(--grn)}
+.notif-vazio{padding:18px 16px;color:var(--faint)}
+.hoje-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0}
+.hoje-delta{font-size:12px;margin-top:3px}.hoje-delta.up{color:var(--grn)}.hoje-delta.down{color:var(--red)}.hoje-delta.flat{color:var(--faint)}
+.hoje-bars{display:grid;grid-template-columns:repeat(24,1fr);gap:4px;align-items:end;height:140px;margin-top:10px}
+.hoje-col{position:relative;height:100%;display:flex;align-items:flex-end}
+.hoje-col .b{position:absolute;bottom:0;left:0;right:0;border-radius:4px 4px 0 0;background:var(--accent-2);min-height:2px}
+.hoje-col .o{position:absolute;bottom:0;left:0;right:0;border-radius:4px 4px 0 0;background:#e3dbf8}
+.hoje-col.agora .b{background:var(--accent-ink)}
+.hoje-eixo{display:grid;grid-template-columns:repeat(24,1fr);gap:4px;font-size:10px;color:var(--faint);text-align:center;margin-top:4px}
+@media(max-width:760px){.hoje-grid{grid-template-columns:repeat(2,1fr)}.notif-panel{top:56px;right:12px}}
 </style>
 </head>
 <body>
@@ -303,10 +326,12 @@ td.empty-cell{padding:40px;text-align:center;color:var(--faint);white-space:norm
   </div>
   <div class="top-actions">
     <span class="save-status" id="save-status">Salvo neste navegador</span>
+    <button class="icon-btn notif-btn" id="btn-notif" data-action="notif" aria-label="Notificações" aria-haspopup="true"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 0 0 4 0"/></svg><span class="notif-badge" id="notif-badge" hidden></span></button>
     <button class="btn btn-sm btn-soft" data-action="exportar">Baixar backup</button>
     <button class="icon-btn" data-action="go" data-view="config" aria-label="Dados e backup"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </div>
 </header>
+<div class="notif-panel" id="notif-panel" hidden role="dialog" aria-label="Notificações"></div>
 <div class="layout">
   <div class="sidebar-espaco" id="sidebarEspaco"></div>
   <aside class="sidebar" id="sidebar"></aside>
@@ -371,6 +396,8 @@ const ICON = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
   calendar: '<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" fill="#fbd46d" stroke="#1d1d1d"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 0 0 4 0"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
   chevronDown: '<path d="m6 9 6 6 6-6"/>',
 };
@@ -409,7 +436,7 @@ function configPadrao() {
   };
 }
 function dadosVazios() {
-  return { versao: 1, produtos: [], estoque: [], vendasFisicas: [], despesas: [], encomendas: [], config: configPadrao() };
+  return { versao: 1, produtos: [], estoque: [], vendasFisicas: [], despesas: [], encomendas: [], notificacoes: [], config: configPadrao() };
 }
 function dadosDoNotion() {
   const S = window.DADOS_NOTION;
@@ -571,6 +598,7 @@ const UI = {
   vendas: { tab: 'lista', periodo: hojeISO().slice(0, 7), canal: 'todos', q: '', agrupar: true, limite: LIM.vendas },
   fisicas: { tab: 'pendentes', q: '' },
   encomendas: { tab: 'abertas', q: '' },
+  hoje: { data: hojeISO() },
   dre: { ano: hojeISO().slice(0, 4) },
   despesas: { periodo: hojeISO().slice(0, 7) },
 };
@@ -634,7 +662,7 @@ const vazioLinha = (cols, msg = 'Nenhum item encontrado.') => `<tr><td class="em
    ========================================================= */
 const NAV = [
   { sec: 'Gestão', itens: [['inicio', 'Início', 'home'], ['produtos', 'Produtos', 'box'], ['estoque', 'Estoque', 'layers'], ['compras', 'Compras', 'truck']] },
-  { sec: 'Vendas', itens: [['vendas', 'Vendas', 'cart'], ['fisicas', 'Vendas Físicas', 'store'], ['encomendas', 'Encomendas', 'clipboard']] },
+  { sec: 'Vendas', itens: [['hoje', 'Vendas do dia', 'clock'], ['vendas', 'Vendas', 'cart'], ['fisicas', 'Vendas Físicas', 'store'], ['encomendas', 'Encomendas', 'clipboard']] },
   { sec: 'Financeiro', itens: [['dre', 'DRE', 'trend'], ['despesas', 'Despesas', 'receipt']] },
 ];
 function renderNav() {
@@ -1309,6 +1337,197 @@ function modalConferirML() {
   });
 }
 
+/* =========================================================
+   Notificações: pendências para resolver + avisos de venda do ML
+   ========================================================= */
+const hhmm = iso => new Date(Date.parse(iso) - 3 * 3600e3).toISOString().slice(11, 16);
+const dtBR = iso => { const x = new Date(Date.parse(iso) - 3 * 3600e3).toISOString(); return `${x.slice(8, 10)}/${x.slice(5, 7)} ${x.slice(11, 16)}`; };
+const notifs = () => DB.notificacoes || (DB.notificacoes = []);
+function notifAdd(tipo, texto, extra = {}) {
+  const l = notifs();
+  l.unshift({ id: uid(), quando: new Date().toISOString(), tipo, texto, lida: false, ...extra });
+  if (l.length > 300) l.length = 300;
+}
+function pendencias() {
+  const out = [], add = (nivel, titulo, detalhe, acao, botao) => out.push({ nivel, titulo, detalhe, acao, botao });
+  if (ML.status && !ML.status.connected) add('alta', 'Mercado Livre desconectado', 'Sem conexão, as vendas novas não chegam. Reconecte em Dados e backup.', 'go:config', 'Conectar');
+  if (ML.autoMsg && ML.autoMsg.startsWith('Sincronização automática falhou')) add('alta', 'Sincronização com o ML falhou', ML.autoMsg, 'go:config', 'Ver');
+  if (ML.pedidos?.length) {
+    const L = mlAnalisar().filter(l => l.estado !== 'ja'), c = e => L.filter(l => l.estado === e).length;
+    const lancar = c('nova') + c('dup') + c('bonif'), rev = c('semestoque') + c('semprod') + c('prov') + c('revisar');
+    if (lancar + rev) add(rev ? 'alta' : 'media', `${lancar + rev} pedido(s) do ML para conferir`, `${lancar} para lançar (já têm estoque ou venda parecida)${rev ? `, ${c('semestoque')} sem unidade, ${c('semprod')} sem produto, ${c('prov')} prováveis` : ''}.`, 'conferir', 'Conferir');
+    const m = {};
+    for (const o of ML.pedidos) { if (o.status !== 'paid' || !o.items?.[0]) continue; const k = dataBR(o.date_created).slice(0, 7); m[k] = (m[k] || 0) + (o.items[0].qty || 1); }
+    for (const u of DB.estoque) { if (u.status !== 'vendido' || u.vendaFisica || !u.dVenda) continue; const k = u.dVenda.slice(0, 7); if (k in m) m[k]--; else m[k] = -1; }
+    const dif = Object.values(m).reduce((t, v) => t + Math.abs(v), 0);
+    if (dif) add('media', 'Vendas do ML e do site não batem', `${dif} unidade(s) de diferença no mês a mês. Veja o painel em Dados e backup.`, 'go:config', 'Ver');
+  }
+  const idVF = new Set(DB.vendasFisicas.filter(v => /identificar/i.test(v.pessoa)).map(v => v.id));
+  const baixas = DB.estoque.filter(u => idVF.has(u.vendaFisica));
+  if (baixas.length) add('media', `${baixas.length} baixa(s) de estoque a identificar`, `Custo de ${brl(sum(baixas, u => u.custo))} sem destino. Diga para quem vendeu ou o que aconteceu.`, 'go:fisicas', 'Resolver');
+  const sv = statsVF(), pend = DB.vendasFisicas.filter(v => statusPgto(v.pago, sv[v.id].venda) !== 'Pago');
+  if (pend.length) add('media', `${brl(sum(pend, v => sv[v.id].venda - (v.pago || 0)))} a receber de vendas físicas`, `${plural(pend.length, 'venda pendente', 'vendas pendentes')} de pagamento.`, 'go:fisicas', 'Ver');
+  const semCusto = DB.estoque.filter(u => !(u.custo > 0) && !norm(u.fornecedor).startsWith('bonifica') && !idVF.has(u.vendaFisica));
+  if (semCusto.length) add('media', `${semCusto.length} unidade(s) sem custo`, 'O lucro dessas vendas está inflado. Corrija o custo em Estoque.', 'go:estoque', 'Ver');
+  const h = hojeISO(), st = statsProdutos(), d30 = addDias(h, -30), v30 = {};
+  DB.estoque.forEach(u => { if (u.status === 'vendido' && u.dVenda >= d30) v30[u.produto] = (v30[u.produto] || 0) + 1; });
+  const repor = Object.entries(v30).filter(([id]) => st[id] && st[id].disp <= 3).sort((a, b) => b[1] - a[1]);
+  if (repor.length) { const P = mapaProdutos(); add('media', `${repor.length} produto(s) para repor`, repor.slice(0, 3).map(([id, n]) => `${(P[id]?.nome || '').slice(0, 28)} (${n} vend./30d, ${st[id].disp} em estoque)`).join('; ') + '.', 'go:produtos', 'Ver'); }
+  const vencem = DB.estoque.filter(u => u.status === 'avenda' && u.validade && u.validade <= addDias(h, 60));
+  if (vencem.length) add('alta', `${vencem.length} unidade(s) vencem em até 60 dias`, 'Confira em Estoque, ordenando por validade.', 'go:estoque', 'Ver');
+  return out;
+}
+function recalcPendencias() {
+  try { ML.pendCache = pendencias(); } catch (e) { ML.pendCache = ML.pendCache || []; console.error(e); }
+  atualizarBadgeNotif();
+  if (!$('#notif-panel').hidden) renderNotifPanel();
+}
+function atualizarBadgeNotif() {
+  const n = notifs().filter(x => !x.lida).length + (ML.pendCache?.length || 0), b = $('#notif-badge');
+  if (!b) return;
+  b.hidden = !n; b.textContent = n > 99 ? '99+' : n;
+  document.title = n ? `(${n}) Bela Ordem` : 'Bela Ordem';
+}
+function renderNotifPanel() {
+  const pend = ML.pendCache || [], ev = notifs().slice(0, 40), nl = notifs().filter(x => !x.lida).length;
+  const chipEv = x => x.tipo === 'venda' ? (x.lancado ? '<span class="chip c-green">Lançada no site</span>' : '<span class="chip c-orange">Precisa de revisão</span>')
+    : x.tipo === 'cancelamento' ? `<span class="chip c-red">${x.devolvido ? 'Cancelada: estoque devolvido' : 'Cancelada'}</span>` : '';
+  $('#notif-panel').innerHTML = `<div class="notif-head"><h3>Notificações</h3><div><button class="btn btn-sm btn-soft" data-action="notifLer" ${nl ? '' : 'disabled'}>Marcar como lidas</button> <button class="ghost-ic" data-action="notif" aria-label="Fechar">${ic('x')}</button></div></div>
+    <div class="notif-sec">Para resolver (${pend.length})</div>
+    ${pend.length ? pend.map(x => `<div class="notif-item"><span class="notif-dot ${x.nivel}"></span><div class="tx"><b>${esc(x.titulo)}</b><div class="hint">${esc(x.detalhe)}</div></div><button class="btn btn-sm btn-dark" data-action="notifAcao" data-acao="${esc(x.acao)}">${esc(x.botao)}</button></div>`).join('') : '<div class="notif-vazio">Nada pendente. Tudo em dia ✓</div>'}
+    <div class="notif-sec">Mercado Livre e sistema</div>
+    ${ev.length ? ev.map(x => `<div class="notif-item ${x.lida ? '' : 'nova'}"><span class="notif-dot ${x.tipo === 'venda' ? (x.lancado ? 'ok' : 'media') : x.tipo === 'cancelamento' ? 'alta' : ''}"></span><div class="tx"><div>${esc(x.texto)}</div>${chipEv(x)}<div class="dt">${dtBR(x.quando)}</div></div></div>`).join('') : '<div class="notif-vazio">As vendas novas do Mercado Livre aparecem aqui assim que chegam.</div>'}`;
+}
+
+/* Lança sozinho só o que é seguro (um único produto possível), restrito às linhas aceitas por "filtro" */
+function mlLancarSeguras(filtro) {
+  const seguras = mlAnalisar().filter(l => filtro(l) && ['dup', 'nova', 'bonif'].includes(l.estado) && candidatosMl(l.it).length === 1);
+  return seguras.length ? aplicarLinhasML(seguras) : { novas: 0, vinc: 0, novas_boni: 0 };
+}
+function mlFretesNasUnidades() {
+  const por = {}; DB.estoque.forEach(u => { if (u.mlPedido) (por[u.mlPedido] = por[u.mlPedido] || []).push(u); });
+  let n = 0;
+  for (const o of ML.pedidos || []) {
+    const us = por[o.id]; if (!us || o.frete_vendedor == null) continue;
+    const f = Math.round(Number(o.frete_vendedor) / us.length * 100) / 100;
+    for (const u of us) if (u.frete == null) { u.frete = f; n++; }
+  }
+  return n;
+}
+/* Cria os avisos de venda/cancelamento do ML ainda não avisados (só pedidos a partir de quando o recurso foi ligado) */
+function mlNotificarPedidos(novosIds = null) {
+  if (!DB.config.notifDesde) { DB.config.notifDesde = new Date().toISOString(); return 0; }
+  const avisados = new Set(notifs().filter(x => x.oid).map(x => x.oid + ':' + x.tipo));
+  let n = 0;
+  for (const o of (ML.pedidos || []).slice().sort((a, b) => a.date_created.localeCompare(b.date_created))) {
+    if (o.date_created < DB.config.notifDesde) continue;
+    const it = o.items?.[0]; if (!it) continue;
+    if (o.status === 'paid' && !avisados.has(o.id + ':venda')) {
+      const lancado = DB.estoque.some(u => u.mlPedido === o.id);
+      notifAdd('venda', `${it.qty || 1}× ${(it.title || '').slice(0, 70)} · ${brl((it.unit_price || 0) * (it.qty || 1))}${lancado ? '' : ' (não foi possível lançar sozinho)'}`, { oid: o.id, lancado, quando: o.date_created });
+      if (novosIds) toast(`Nova venda no ML: ${(it.title || '').slice(0, 40)} · ${brl((it.unit_price || 0) * (it.qty || 1))}${lancado ? ' (lançada)' : ''}`);
+      n++;
+    }
+    if (o.status === 'cancelled' && avisados.has(o.id + ':venda') && !avisados.has(o.id + ':cancelamento')) {
+      const us = DB.estoque.filter(u => u.mlPedido === o.id && u.status === 'vendido');
+      if (us.length) { devolverUnidades(us); us.forEach(u => { u.mlPedido = null; }); }
+      notifAdd('cancelamento', `Pedido cancelado: ${(it.title || '').slice(0, 70)}`, { oid: o.id, devolvido: us.length > 0 });
+      if (novosIds) toast('Pedido cancelado no ML' + (us.length ? ': estoque devolvido' : ''), true);
+      n++;
+    }
+  }
+  return n;
+}
+let pollTimer = null, polling = false;
+async function mlPoll() {
+  if (polling || document.hidden || !sessao() || !DB?.produtos?.length || nuvemBloqueada || !ML.status?.connected || !ML.pedidos) return;
+  polling = true;
+  try {
+    const { orders } = await mlChamar('list', { limit: 60, offset: 0 });
+    const conhecidos = new Map(ML.pedidos.map(o => [o.id, o]));
+    const novos = new Set(); let mudou = false;
+    for (const o of orders) {
+      const a = conhecidos.get(o.id);
+      if (!a) { ML.pedidos.unshift(o); novos.add(o.id); mudou = true; }
+      else if (a.status !== o.status || a.frete_em !== o.frete_em) { Object.assign(a, o); mudou = true; if (o.status === 'cancelled') novos.add(o.id); }
+    }
+    if (mudou) {
+      const r = mlLancarSeguras(l => novos.has(l.o.id));
+      const f = mlFretesNasUnidades();
+      const n = mlNotificarPedidos(novos);
+      if (r.novas + r.vinc + r.novas_boni + f + n) commit();
+      recalcPendencias();
+      if (UI.view === 'hoje') render();
+    }
+  } catch (e) { console.warn('poll', e); }
+  polling = false;
+}
+function iniciarPoll() {
+  if (pollTimer) return;
+  pollTimer = setInterval(mlPoll, 45000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) mlPoll(); });
+}
+
+/* =========================================================
+   Vendas do dia (como o resumo do Mercado Livre)
+   ========================================================= */
+function resumoDia(data, ateHora = 24) {
+  const r = { pedidos: 0, un: 0, bruto: 0, tarifa: 0, frete: 0, canc: 0, cancV: 0, lucro: 0, lancados: 0, lista: [], horas: Array.from({ length: 24 }, () => 0), prod: {} };
+  for (const o of ML.pedidos || []) {
+    if (dataBR(o.date_created) !== data) continue;
+    const hora = +hhmm(o.date_created).slice(0, 2); if (hora >= ateHora) continue;
+    const it = o.items?.[0]; if (!it) continue; const q = it.qty || 1, v = (it.unit_price || 0) * q;
+    if (o.status === 'cancelled') { r.canc++; r.cancV += v; r.lista.push({ o, it, q, v }); continue; }
+    r.pedidos++; r.un += q; r.bruto += v; r.tarifa += (it.sale_fee || 0) * q; r.frete += Number(o.frete_vendedor || 0); r.horas[hora] += v;
+    r.prod[it.title] = (r.prod[it.title] || { q: 0, v: 0 }); r.prod[it.title].q += q; r.prod[it.title].v += v;
+    const us = DB.estoque.filter(u => u.mlPedido === o.id);
+    if (us.length) { r.lancados++; r.lucro += sum(us, lucro); } else r.lucro += v - (it.sale_fee || 0) * q - Number(o.frete_vendedor || 0);
+    r.lista.push({ o, it, q, v, lancado: us.length > 0 });
+  }
+  r.lista.sort((a, b) => b.o.date_created.localeCompare(a.o.date_created));
+  return r;
+}
+const deltaHtml = (a, b, rot) => { if (!b) return `<div class="hoje-delta flat">${rot}: —</div>`; const p = (a - b) / b; return `<div class="hoje-delta ${p > 0.005 ? 'up' : p < -0.005 ? 'down' : 'flat'}">${p > 0 ? '▲' : p < 0 ? '▼' : '='} ${Math.abs(p * 100).toFixed(0)}% ${rot}</div>`; };
+function vHoje() {
+  if (!ML.pedidos) {
+    if (!ML.hojeCarregando && sessao()) { ML.hojeCarregando = true; mlChamar('status').then(async st => { ML.status = st; if (st.connected) ML.pedidos = await mlListarTudo(); }).catch(e => toast(e.message, true)).finally(() => { ML.hojeCarregando = false; if (UI.view === 'hoje') render(); }); }
+    return `<div class="page">${pageHead('Vendas do dia', 'Carregando os pedidos do Mercado Livre...')}</div>`;
+  }
+  const hojeS = hojeISO(), d = UI.hoje.data || hojeS, ehHoje = d === hojeS;
+  const agoraH = ehHoje ? +hhmm(new Date().toISOString()).slice(0, 2) + 1 : 24;
+  const A = resumoDia(d), ont = addDias(d, -1), sem = addDias(d, -7);
+  const O1 = resumoDia(ont, agoraH), O1full = resumoDia(ont), S1 = resumoDia(sem, agoraH);
+  const A_h = ehHoje ? resumoDia(d, agoraH) : A;
+  const rotOnt = ehHoje ? 'vs. ontem até agora' : 'vs. dia anterior', rotSem = 'vs. mesmo dia da semana passada';
+  const dt = new Date(d + 'T12:00:00'), tit = `${DIAS[dt.getDay()]}, ${dt.getDate()} de ${MESES[dt.getMonth()].toLowerCase()} de ${dt.getFullYear()}`;
+  const max = Math.max(1, ...A.horas, ...O1full.horas);
+  const kpi = (l, v, extra = '') => `<div class="kpi"><div class="kpi-l">${l}</div><div class="kpi-v">${v}</div>${extra}</div>`;
+  const top = Object.entries(A.prod).sort((a, b) => b[1].v - a[1].v).slice(0, 8);
+  return `<div class="page">${pageHead('Vendas do dia', tit, `<button class="btn ${d === hojeS ? 'btn-dark' : ''}" data-action="hojeDia" data-dia="${hojeS}">Hoje</button><button class="btn ${d === ont && !ehHoje && addDias(hojeS, -1) === d ? 'btn-dark' : ''}" data-action="hojeDia" data-dia="${addDias(hojeS, -1)}">Ontem</button><input class="sel" type="date" value="${d}" max="${hojeS}" data-bind="hoje.data" aria-label="Escolher o dia">`)}
+  <div class="card block" style="margin-bottom:22px"><div class="hoje-grid">
+    ${kpi('Vendas brutas', brl(A.bruto), deltaHtml(A_h.bruto, O1.bruto, rotOnt) + deltaHtml(A_h.bruto, S1.bruto, rotSem))}
+    ${kpi('Unidades vendidas', A.un, deltaHtml(A_h.un, O1.un, rotOnt))}
+    ${kpi('Pedidos', A.pedidos, deltaHtml(A_h.pedidos, O1.pedidos, rotOnt))}
+    ${kpi('Ticket médio', brl(A.pedidos ? A.bruto / A.pedidos : null))}
+  </div><div class="hoje-grid" style="border-top:1px solid var(--line-2)">
+    ${kpi('Tarifas do ML', brl(A.tarifa), `<div class="hint">${pct(A.bruto ? A.tarifa / A.bruto : null)} das vendas</div>`)}
+    ${kpi('Frete pago por você', brl(A.frete), `<div class="hint">${A.frete ? '' : 'ainda sendo buscado'}</div>`)}
+    ${kpi('Lucro estimado', brl(A.lucro), `<div class="hint">${A.lancados} de ${A.pedidos} já lançados no site${A.pedidos - A.lancados ? ' (o resto sem custo)' : ''}</div>`)}
+    ${kpi('Cancelamentos', A.canc, `<div class="hint">${brl(A.cancV)}</div>`)}
+  </div></div>
+  <section class="block"><div class="sec-head"><h2>Vendas por hora</h2><span class="hint"><span class="chip c-purple">dia escolhido</span> <span class="chip">dia anterior (claro)</span></span></div>
+    <div class="hoje-bars">${A.horas.map((v, h) => `<div class="hoje-col ${ehHoje && h === agoraH - 1 ? 'agora' : ''}" title="${String(h).padStart(2, '0')}h: ${brl(v)} (dia anterior: ${brl(O1full.horas[h])})"><div class="o" style="height:${(O1full.horas[h] / max * 100).toFixed(1)}%"></div><div class="b" style="height:${(v / max * 100).toFixed(1)}%"></div></div>`).join('')}</div>
+    <div class="hoje-eixo">${A.horas.map((_, h) => `<span>${h % 3 === 0 ? h : ''}</span>`).join('')}</div></section>
+  <div class="grid-home"><div>
+    <section class="block"><div class="sec-head"><h2>Pedidos do dia</h2><span class="hint">${A.lista.length} no total · atualiza sozinho a cada minuto</span></div>
+    <div class="table-wrap livre"><table><thead><tr><th>Hora</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor</th><th>Situação</th></tr></thead><tbody>
+    ${A.lista.map(x => `<tr><td>${hhmm(x.o.date_created)}</td><td>${esc((x.it.title || '').slice(0, 70))}</td><td class="num">${x.q}</td><td class="num">${brl(x.v)}</td><td>${x.o.status === 'cancelled' ? '<span class="chip c-red">Cancelada</span>' : x.lancado ? '<span class="chip c-green">Lançada no site</span>' : '<span class="chip c-orange">Revisar</span>'}</td></tr>`).join('') || vazioLinha(5, 'Nenhum pedido neste dia.')}
+    </tbody></table></div></section></div>
+  <div><section class="block"><div class="sec-head"><h2>Mais vendidos</h2></div>
+    ${top.length ? top.map(([t, x]) => `<div class="bar-row"><div class="bar-name"><span>${esc(t.slice(0, 44))}</span></div><div></div><div class="bar-n">${x.q}</div></div>`).join('') : '<p class="hint">Sem vendas neste dia.</p>'}
+    <p class="hint" style="margin-top:14px">Visitas e conversão não vêm pela integração, só os pedidos.</p></section></div></div></div>`;
+}
+
 /* Sincronização automática ao abrir o site: traz os pedidos recentes e os fretes, lança sozinho só o que é seguro
    (últimos 14 dias, anúncio com um único produto possível) e devolve ao estoque o que o ML cancelou.
    O que for duvidoso (sem estoque, sem vínculo, provável) fica para você revisar em "Conferir com meu estoque". */
@@ -1343,6 +1562,7 @@ async function mlAuto() {
       const us = DB.estoque.filter(u => u.mlPedido === o.id && u.status === 'vendido');
       if (us.length) { devolverUnidades(us); us.forEach(u => { u.mlPedido = null; }); devol += us.length; }
     }
+    const semDesde = !DB.config.notifDesde, novosAvisos = mlNotificarPedidos();
     const revisar = linhas.filter(l => ['semestoque', 'semprod', 'prov', 'revisar'].includes(l.estado)).length;
     const partes = [];
     if (r.novas + r.novas_boni) partes.push(`${plural(r.novas + r.novas_boni, 'venda lançada', 'vendas lançadas')}`);
@@ -1350,7 +1570,9 @@ async function mlAuto() {
     if (fretes) partes.push(`${plural(fretes, 'frete', 'fretes')}`);
     if (devol) partes.push(`${plural(devol, 'devolução', 'devoluções')}`);
     ML.autoMsg = partes.length || revisar ? `Última sincronização: ${partes.join(', ') || 'nada novo'}${revisar ? ` · ${plural(revisar, 'pedido', 'pedidos')} para revisar` : ''}` : 'Mercado Livre em dia';
-    if (partes.length) { commit(); toast(`Mercado Livre: ${partes.join(', ')}${revisar ? ` · ${revisar} para revisar` : ''}`); }
+    iniciarPoll(); recalcPendencias();
+    if (partes.length || novosAvisos || semDesde) { commit(); }
+    if (partes.length) { toast(`Mercado Livre: ${partes.join(', ')}${revisar ? ` · ${revisar} para revisar` : ''}`); }
     else if (UI.view === 'config') render();
   } catch (e) { ML.autoMsg = `Sincronização automática falhou: ${e.message}`; if (UI.view === 'config') render(); }
 }
@@ -2129,7 +2351,7 @@ function fecharBusca() { const b = $('#busca-global'); b.value = ''; renderBusca
 /* =========================================================
    Renderização e navegação
    ========================================================= */
-const VIEWS = { inicio: vInicio, produtos: vProdutos, estoque: vEstoque, compras: vCompras, vendas: vVendas, fisicas: vFisicas, encomendas: vEncomendas, dre: vDRE, despesas: vDespesas, config: vConfig };
+const VIEWS = { hoje: vHoje, inicio: vInicio, produtos: vProdutos, estoque: vEstoque, compras: vCompras, vendas: vVendas, fisicas: vFisicas, encomendas: vEncomendas, dre: vDRE, despesas: vDespesas, config: vConfig };
 function render() {
   const a = document.activeElement;
   const id = a && a.id && $('#main').contains(a) ? a.id : null;
@@ -2139,6 +2361,7 @@ function render() {
   renderNav();
   $('#main').innerHTML = VIEWS[UI.view]();
   if (scroll) { const w = $('#main .table-wrap'); if (w) w.scrollLeft = scroll; }
+  atualizarBadgeNotif();
   if (id) {
     const el = document.getElementById(id);
     if (el) { el.focus(); try { if (sel && sel[0] != null) el.setSelectionRange(sel[0], sel[1]); } catch (e) { /* campo sem seleção */ } }
@@ -2292,6 +2515,14 @@ const ACOES = {
     confirmar('Aplicar fretes do ML', `Atualizar o frete de <b>${plural(mud.length, 'unidade', 'unidades')}</b> com o valor real cobrado pelo Mercado Livre? Isso muda o lucro dessas vendas. Baixe um backup antes se tiver dúvida.`, () => { mud.forEach(([u, f]) => { u.frete = f; }); commit('Fretes atualizados'); }, { texto: 'Aplicar' });
   },
   mlConferir: () => modalConferirML(),
+  notif: () => { const pn = $('#notif-panel'); if (pn.hidden) { recalcPendencias(); renderNotifPanel(); pn.hidden = false; } else pn.hidden = true; },
+  notifLer: () => { notifs().forEach(x => { x.lida = true; }); salvar(); recalcPendencias(); },
+  notifAcao: el => {
+    $('#notif-panel').hidden = true; const a = el.dataset.acao;
+    if (a === 'conferir') { if (!ML.pedidos) return go('config'); return modalConferirML(); }
+    if (a.startsWith('go:')) go(a.slice(3));
+  },
+  hojeDia: el => { UI.hoje.data = el.dataset.dia; render(); },
   mlVincular: () => modalVincularAnuncios(),
   mlMarcarBonif: () => $$('.ml-inc[data-bonif]').forEach(c => { c.checked = true; }),
   mlConectar: async () => {
@@ -2404,6 +2635,10 @@ document.addEventListener('change', e => {
     el.value = '';
   }
 });
+document.addEventListener('click', e => {
+  const pn = $('#notif-panel');
+  if (pn && !pn.hidden && !e.target.closest('#notif-panel') && !e.target.closest('#btn-notif')) pn.hidden = true;
+}, true);
 document.addEventListener('keydown', e => {
   const tag = e.target.tagName;
   if (e.key === 'Escape') {
@@ -2535,6 +2770,7 @@ async function iniciarApp() {
   UI.view = VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'inicio';
   render();
   mlAuto();
+  recalcPendencias();
 }
 
 /* ---------- início ---------- */
