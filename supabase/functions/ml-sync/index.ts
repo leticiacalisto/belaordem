@@ -6,14 +6,15 @@ const json = (body: unknown, status = 200) =>
     headers: { ...cors, "content-type": "application/json" },
   });
 
-async function sync(days: number) {
+// Busca pedidos entre "from" e "to" (ISO). Pedidos com mais de ~1 ano ficam em /orders/search/archived.
+async function sync(from: string, to: string, arquivados = false) {
   const { token, userId } = await getAccess();
-  const from = new Date(Date.now() - days * 86_400_000).toISOString();
   let offset = 0, total = 0;
   while (true) {
-    const u = new URL("https://api.mercadolibre.com/orders/search");
+    const u = new URL(`https://api.mercadolibre.com/orders/search${arquivados ? "/archived" : ""}`);
     u.searchParams.set("seller", String(userId));
     u.searchParams.set("order.date_created.from", from);
+    u.searchParams.set("order.date_created.to", to);
     u.searchParams.set("sort", "date_desc");
     u.searchParams.set("limit", "50");
     u.searchParams.set("offset", String(offset));
@@ -64,11 +65,17 @@ Deno.serve(async (req) => {
       return json({ connected: !!data, ...data });
     }
     if (action === "sync") {
-      return json({ synced: await sync(Math.min(Number(body.days) || 60, 365)) });
+      const ate = body.ate ?? new Date().toISOString();
+      const desde = body.desde ?? new Date(Date.now() - Math.min(Number(body.days) || 60, 365) * 86_400_000).toISOString();
+      const arq = Date.parse(desde) < Date.now() - 330 * 86_400_000;   // janela antiga: tenta também os arquivados
+      let n = await sync(desde, ate);
+      if (arq) { try { n += await sync(desde, ate, true); } catch (_) { /* conta sem arquivados */ } }
+      return json({ synced: n });
     }
     if (action === "list") {
+      const off = Number(body.offset) || 0, lim = Math.min(Number(body.limit) || 1000, 1000);
       const { data, error } = await db.from("ml_orders").select("*")
-        .order("date_created", { ascending: false }).limit(Number(body.limit) || 500);
+        .order("date_created", { ascending: false }).range(off, off + lim - 1);
       if (error) throw error;
       return json({ orders: data });
     }
