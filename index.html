@@ -1119,6 +1119,18 @@ function cardML() {
 const diasEntre = (a, b) => Math.abs((Date.parse(a) - Date.parse(b)) / 86400000);
 const dataBR = iso => new Date(Date.parse(iso) - 3 * 3600e3).toISOString().slice(0, 10);
 
+function produtoMl(it) {
+  const mapa = DB.config.mlMapa || {};
+  if (it.item_id && mapa[it.item_id]) { const p = DB.produtos.find(x => x.id === mapa[it.item_id]); if (p) return p; }
+  if (it.sku == null) return null;
+  const c = DB.produtos.filter(p => String(p.sku) === String(it.sku));
+  if (c.length <= 1) return c[0] || null;
+  // kits têm o mesmo SKU do produto base: desempata pelo título do anúncio (palavras em comum e o "kit N")
+  const palavras = t => new Set(norm(t).split(/[^a-z0-9]+/).filter(Boolean));
+  const tit = palavras(it.title), kitT = norm(it.title).match(/kit\s*(\d+)/)?.[1] || '';
+  const pont = p => [...palavras(p.nome)].filter(w => tit.has(w)).length + ((norm(p.nome).match(/kit\s*(\d+)/)?.[1] || '') === kitT ? 5 : 0);
+  return c.slice().sort((a, b) => pont(b) - pont(a))[0];
+}
 function mlAnalisar() {
   const linhas = [], usados = new Set();
   const pedidos = (ML.pedidos || []).filter(o => o.status === 'paid').sort((a, b) => a.date_created.localeCompare(b.date_created));
@@ -1126,7 +1138,7 @@ function mlAnalisar() {
     const data = dataBR(o.date_created);
     for (const it of o.items || []) {
       const qtd = it.qty || 1;
-      const prod = it.sku != null ? DB.produtos.find(p => String(p.sku) === String(it.sku)) : null;
+      const prod = produtoMl(it);
       const base = { o, it, prod, qtd, data, ids: [] };
       if (!prod) { linhas.push({ ...base, estado: 'semprod' }); continue; }
       if (DB.estoque.filter(u => u.mlPedido === o.id && u.produto === prod.id).length >= qtd) { linhas.push({ ...base, estado: 'ja' }); continue; }
@@ -1324,7 +1336,7 @@ function modalVendasXml(arquivos) {
   }
   if (!notas.length) return erro(falhas.length === 1 ? `${falhas[0]} não parece o XML de uma NF-e.` : 'Nenhum dos arquivos parece o XML de uma NF-e.');
   const so = x => String(x || '').replace(/\D/g, '');
-  const achar = it => (it.ean && DB.produtos.find(p => so(p.ean) === it.ean)) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null;
+  const achar = it => produtoPorEan(it.ean) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null;
   const linhas = notas.flatMap((nota, ni) => nota.itens.map(it => linhaVendaXml(it, ni, nota, achar(it))));
   const corpo = `<div class="info"><b>${plural(notas.length, 'nota lida', 'notas lidas')}</b> · ${plural(linhas.length, 'item', 'itens')}. Confira, ajuste o que precisar e desmarque o que não quer lançar. Linhas em vermelho não têm produto correspondente.${falhas.length ? `<br>Arquivos ignorados (não são NF-e): ${falhas.map(esc).join(', ')}` : ''}</div>
   <div class="form-grid"><div class="f full"><span class="lbl">Canal</span><div class="seg"><label><input type="radio" name="vx-canal" value="ml" checked><span>Mercado Livre</span></label><label><input type="radio" name="vx-canal" value="fisica"><span>Venda física (cliente = destinatário da nota)</span></label></div></div></div>
@@ -1475,6 +1487,15 @@ function preencherLinhaCompra(tr) {
   set('.mc-venda', ult.venda);
   set('.mc-frete', ult.frete);
 }
+/* EAN: compara sem zeros à esquerda e aceita EANs alternativos; entre produtos com o mesmo EAN (kits), prefere o que não é kit */
+const soEan = x => String(x || '').replace(/\D/g, '').replace(/^0+/, '');
+function produtoPorEan(ean) {
+  const e = soEan(ean);
+  if (!e) return null;
+  const c = DB.produtos.filter(p => soEan(p.ean) === e || (p.eanAlt || []).some(a => soEan(a) === e));
+  return c.find(p => !/^kit\b/i.test(p.nome)) || c[0] || null;
+}
+const ignorarItemNota = nome => (DB.config.ignorarNotas || []).some(k => norm(nome).includes(norm(k)));
 /* Lê o XML da NF-e (nfeProc ou NFe): fornecedor, número, data e itens com custo unitário
    (produtos + frete + seguro + outras despesas − desconto, dividido pela quantidade). */
 function lerNFe(texto) {
@@ -1503,9 +1524,10 @@ function lerNFe(texto) {
 }
 function importarNFe(texto) {
   const nfe = lerNFe(texto);
+  if (nfe) nfe.itens = nfe.itens.filter(i => !ignorarItemNota(i.nome) || produtoPorEan(i.ean));
   if (!nfe || !nfe.itens.length) return erro('Este arquivo não parece o XML de uma NF-e.');
   const so = x => String(x || '').replace(/\D/g, '');
-  const achar = it => (it.ean && DB.produtos.find(p => so(p.ean) === it.ean)) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null;
+  const achar = it => produtoPorEan(it.ean) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null;
   const forn = DB.config.fornecedores.find(f => norm(nfe.fornecedor).includes(norm(f)) || norm(f).includes(norm(nfe.fornecedor))) || nfe.fornecedor;
   $('#mc-forn').value = forn;
   $('#mc-nf').value = nfe.nf;
@@ -1542,8 +1564,9 @@ function analisarNotasCompra(arquivos) {
     if (vistas.has(id)) continue;
     vistas.add(id);
     const forn = DB.config.fornecedores.find(f => mesmoForn(nfe.fornecedor, f)) || nfe.fornecedor;
-    const itens = nfe.itens.map(it => ({ ...it, prod: (it.ean && DB.produtos.find(p => so(p.ean) === it.ean)) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null }));
-    const total = itens.reduce((t, i) => t + i.qtd, 0);
+    const itens = nfe.itens.map(it => ({ ...it, prod: produtoPorEan(it.ean) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null }))
+      .filter(i => i.prod || !ignorarItemNota(i.nome));
+    const total = itens.filter(i => i.prod).reduce((t, i) => t + i.qtd, 0);
     const doMesmoNf = DB.estoque.filter(u => (nfe.chave && u.nfCompra === nfe.chave) || (nfNum(u.nf) && nfNum(u.nf) === nfNum(nfe.nf) && mesmoForn(u.fornecedor, forn)));
     const outroForn = !doMesmoNf.length && nfNum(nfe.nf) && DB.estoque.some(u => nfNum(u.nf) === nfNum(nfe.nf));
     const semProd = itens.filter(i => !i.prod);
@@ -1567,7 +1590,7 @@ const NOTA_ESTADOS = {
 };
 
 /* Cadastro guiado dos produtos de NF-e que não existem no site: um por vez, com confirmação de cada um. */
-const acharProdutoXml = it => (it.ean && DB.produtos.find(p => String(p.ean || '').replace(/\D/g, '') === it.ean)) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null;
+const acharProdutoXml = it => produtoPorEan(it.ean) || DB.produtos.find(p => norm(p.nome) === norm(it.nome)) || null;
 
 function abrirCadastroXml(f) {
   while (f.i < f.fila.length && acharProdutoXml(f.fila[f.i])) f.i++;   // já cadastrado por fora
@@ -1621,6 +1644,7 @@ function modalNotasCompra(arquivos) {
       for (const n of marcadas) {
         adicionarNaLista('fornecedores', n.forn);
         for (const it of n.itens) {
+          if (!it.prod) continue;
           const ult = DB.estoque.filter(i => i.produto === it.prod.id).sort((a, b) => (b.dCompra || '').localeCompare(a.dCompra || ''))[0];
           for (let j = 0; j < it.qtd; j++) {
             DB.estoque.push({ id: uid(), produto: it.prod.id, custo: Math.round(it.custo * 100) / 100, venda: ult?.venda ?? null, taxa: ult?.taxa ?? DB.config.taxaPadrao, frete: ult?.frete ?? null,
@@ -1717,6 +1741,7 @@ function modalProduto(id = null) {
   </div>
   <div class="form-grid"><div class="f full"><span class="lbl">Categorias</span><div class="chips" style="gap:8px">${DB.config.tipos.map(t => `<label class="check" style="background:#f6f6f9;padding:6px 10px;border-radius:8px"><input type="checkbox" class="pr-tipo" value="${esc(t)}" ${(p.tipos || []).includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('')}</div></div></div>
   <div class="form-grid">${campo('pr-ncm', 'NCM', inputTxt('pr-ncm', p.ncm))}${campo('pr-ean', 'EAN', inputTxt('pr-ean', p.ean))}</div>
+  <div class="form-grid">${campo('pr-eanalt', 'Outros EANs (separados por vírgula)', inputTxt('pr-eanalt', (p.eanAlt || []).join(', ')), 'full')}</div>
   ${st ? `<div class="stat-row"><div class="stat"><span>Disponível</span><b>${st.disp}</b></div><div class="stat"><span>Vendidos</span><b>${st.vend}</b></div><div class="stat"><span>Custo médio</span><b>${brl(st.cc ? st.sc / st.cc : null)}</b></div><div class="stat"><span>Margem média</span><b>${pct(st.cm ? st.sm / st.cm : null)}</b></div></div>` : ''}`;
   const esquerda = id ? (st.n ? `<span class="hint left">Tem ${st.n} unidades no histórico, por isso não pode ser excluído</span>` : `<button class="btn btn-sm btn-danger left" data-action="excluirProduto" data-id="${id}">Excluir produto</button>`) : '';
   abrirModal({
@@ -1724,7 +1749,7 @@ function modalProduto(id = null) {
     onConfirm: () => {
       const nome = val('pr-nome');
       if (!nome) return erro('Informe o nome do produto.');
-      const dados = { nome, sku: num(val('pr-sku')), fabricante: val('pr-fab') || null, tipos: $$('.pr-tipo:checked').map(x => x.value), ncm: val('pr-ncm'), ean: val('pr-ean') };
+      const dados = { nome, sku: num(val('pr-sku')), fabricante: val('pr-fab') || null, tipos: $$('.pr-tipo:checked').map(x => x.value), ncm: val('pr-ncm'), ean: val('pr-ean'), eanAlt: val('pr-eanalt').split(/[,;\s]+/).filter(Boolean) };
       adicionarNaLista('fabricantes', dados.fabricante);
       if (id) Object.assign(p, dados);
       else DB.produtos.push({ id: uid(), ...dados });
