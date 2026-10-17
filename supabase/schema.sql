@@ -40,3 +40,14 @@ create table if not exists bo_acesso (
   email text primary key check (email = lower(email))
 );
 alter table bo_acesso enable row level security;
+
+-- Dados extras do pedido (frete cobrado do vendedor, pagamento, envio)
+alter table ml_orders add column if not exists pack_id bigint;
+alter table ml_orders add column if not exists date_closed timestamptz;
+alter table ml_orders add column if not exists pagamentos jsonb;
+alter table ml_orders add column if not exists frete_vendedor numeric(12,2);
+alter table ml_orders add column if not exists frete_comprador numeric(12,2);
+alter table ml_orders add column if not exists envio_status text;
+alter table ml_orders add column if not exists envio_tipo text;
+alter table ml_orders add column if not exists frete_em timestamptz;
+create index if not exists ml_orders_frete_idx on ml_orders (frete_em) where frete_em is null;

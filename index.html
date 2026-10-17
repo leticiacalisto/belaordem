@@ -1106,14 +1106,16 @@ function cardML() {
     const s = ML.status;
     const estado = !s ? 'Verificando...' : s.connected ? `Conectado (conta ${esc(String(s.ml_user_id))})` : 'Não conectado';
     const ped = ML.pedidos;
-    const tabela = ped ? (ped.length ? `<div class="table-wrap livre" style="margin-top:14px"><table><thead><tr><th>Data</th><th>Status</th><th>Itens</th><th class="num">Total</th><th class="num">Taxa ML</th></tr></thead><tbody>
-      ${ped.slice(0, 15).map(o => `<tr><td>${fdata(o.date_created.slice(0, 10))}</td><td>${esc(o.status || '')}</td><td>${esc((o.items || []).map(i => `${i.qty}× ${i.title}`).join(', '))}</td><td class="num">${brl(o.total_amount)}</td><td class="num">${brl(o.sale_fee)}</td></tr>`).join('')}
+    const tabela = ped ? (ped.length ? `<div class="table-wrap livre" style="margin-top:14px"><table><thead><tr><th>Data</th><th>Status</th><th>Itens</th><th class="num">Total</th><th class="num">Taxa ML</th><th class="num">Frete ML</th></tr></thead><tbody>
+      ${ped.slice(0, 15).map(o => `<tr><td>${fdata(o.date_created.slice(0, 10))}</td><td>${esc(o.status || '')}</td><td>${esc((o.items || []).map(i => `${i.qty}× ${i.title}`).join(', '))}</td><td class="num">${brl(o.total_amount)}</td><td class="num">${brl(o.sale_fee)}</td><td class="num">${o.frete_em ? brl(o.frete_vendedor) : '—'}</td></tr>`).join('')}
       </tbody></table></div><p class="hint" style="margin-top:6px">${plural(ped.length, 'pedido', 'pedidos')} guardados. Mostrando os 15 mais recentes. Isso não altera seu estoque nem suas vendas.</p>` : '<p class="hint" style="margin-top:12px">Nenhum pedido guardado ainda. Clique em "Sincronizar vendas".</p>') : '';
     corpo = `<div class="stat" style="margin-bottom:12px"><span>Situação</span><b>${estado}</b></div>
       <div class="cfg-actions">
         <button class="btn" data-action="mlConectar">${s?.connected ? 'Reconectar' : 'Conectar Mercado Livre'}</button>
         <button class="btn btn-dark" data-action="mlSincronizar" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>${ML.ocupado ? (ML.progresso || 'Sincronizando...') : 'Sincronizar vendas (60 dias)'}</button>
         <button class="btn" data-action="mlHistorico" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Puxar histórico completo</button>
+        <button class="btn" data-action="mlFretes" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Buscar fretes do ML</button>
+        <button class="btn" data-action="mlAplicarFretes" ${ML.pedidos?.some(o => o.frete_vendedor != null) ? '' : 'disabled'}>Aplicar fretes nas vendas</button>
         <button class="btn" data-action="mlConferir" ${ML.pedidos?.length ? '' : 'disabled'}>Conferir com meu estoque</button>
       </div>${tabela}`;
   }
@@ -1159,6 +1161,7 @@ function sugestaoTitulo(titulo) {
 
 /* Janela de ±10 dias e valor com tolerância (max R$ 1,50 ou 4%): vendas lançadas à mão raramente têm data e preço idênticos aos do pedido. */
 const JANELA_DUP = 10, tolValor = v => Math.max(1.5, 0.04 * v);
+const freteUn = l => l.o.frete_vendedor != null ? Math.round(Number(l.o.frete_vendedor) / l.qtd * 100) / 100 : null;
 function ehBonificacao(p) {
   if (!p) return false;
   if (p.bonificacao) return true;
@@ -1192,6 +1195,15 @@ function mlAnalisar() {
       }
       if (nova) { nova.us.forEach(u => usados.add(u.id)); linhas.push({ ...base, prod: nova.p, estado: 'nova', ids: nova.us.map(u => u.id) }); continue; }
       linhas.push({ ...base, estado: ehBonificacao(cands[0]) ? 'bonif' : 'semestoque' });
+    }
+  }
+  // venda lançada à mão com data/valor bem diferentes do pedido (até 30 dias e 12%): só sugere, nunca marca sozinho
+  for (const l of linhas.filter(x => x.estado === 'semestoque')) {
+    for (const p of candidatosMl(l.it)) {
+      const u = DB.estoque.filter(x => x.produto === p.id && x.status === 'vendido' && !x.vendaFisica && !x.mlPedido && !usados.has(x.id) && x.dVenda
+        && diasEntre(x.dVenda, l.data) <= 30 && Math.abs((x.venda || 0) - l.it.unit_price) <= 0.12 * l.it.unit_price)
+        .sort((a, b) => diasEntre(a.dVenda, l.data) - diasEntre(b.dVenda, l.data))[0];
+      if (u && l.qtd === 1) { usados.add(u.id); Object.assign(l, { estado: 'prov', prod: p, ids: [u.id], rotulo: `Provável: no site ${fdata(u.dVenda)} por ${brl(u.venda)}` }); break; }
     }
   }
   return linhas;
@@ -1238,6 +1250,7 @@ const ML_ESTADOS = {
   dup: ['c-yellow', 'Já lançada: só vincular', true],
   nova: ['c-green', 'Nova venda', true],
   revisar: ['c-orange', 'Parte já lançada: revise à mão', false],
+  prov: ['c-orange', 'Provável mesma venda', true],
   bonif: ['c-blue', 'Bonificação (sem NF, custo 0)', true],
   semestoque: ['c-red', 'Sem unidade: compra não lançada? (ou bonificação)', true],
   semprod: ['c-red', 'Anúncio sem produto: vincule', false],
@@ -1250,10 +1263,10 @@ function modalConferirML() {
   const corpo = `<div class="info">${plural(cont('nova'), 'venda nova', 'vendas novas')} · ${plural(cont('dup'), 'já lançada', 'já lançadas')} · ${cont('ja')} já conferidas · ${plural(cont('bonif'), 'bonificação', 'bonificações')} · para revisar: ${cont('semestoque')} sem unidade à venda, ${cont('semprod')} sem SKU/produto, ${cont('revisar')} parcialmente lançadas.<br>
     ${cont('semprod') ? `<button class="btn btn-sm btn-dark" style="margin:6px 6px 6px 0" data-action="mlVincular">Vincular ${plural(cont('semprod'), 'pedido', 'pedidos')} sem produto</button>` : ''}
     ${cont('semestoque') ? `<button class="btn btn-sm btn-soft" style="margin:6px 0" data-action="mlMarcarBonif">Marcar as ${cont('semestoque')} "sem unidade" como bonificação</button><br>` : ''}
-    <span class="hint">Vendas novas dão baixa no estoque. "Bonificação" cria a unidade com fornecedor Bonificação, sem NF e custo 0, e já marca como vendida. As "já lançadas" só ganham o número do pedido, sem duplicar. O frete não vem do ML: nas novas ele fica em branco. Baixe um backup antes de aplicar.</span></div>
+    <span class="hint">Vendas novas dão baixa no estoque. "Bonificação" cria a unidade com fornecedor Bonificação, sem NF e custo 0, e já marca como vendida. As "já lançadas" só ganham o número do pedido, sem duplicar. As "já lançadas" e "prováveis" passam a ter valor, taxa, data e frete iguais aos do ML. Se o frete ainda não foi buscado, ele fica em branco. Baixe um backup antes de aplicar.</span></div>
   <div class="table-wrap livre" style="margin-top:12px;max-height:48vh;overflow:auto"><table><thead><tr><th></th><th>Data</th><th>SKU</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor un.</th><th>Situação</th></tr></thead><tbody>
   ${mostrar.map(l => { const [cor, txt, marcavel] = ML_ESTADOS[l.estado]; const k = linhas.indexOf(l);
-    return `<tr><td><input type="checkbox" class="ml-inc" data-k="${k}" ${l.estado === 'semestoque' || l.estado === 'bonif' ? 'data-bonif="1"' : ''} ${marcavel && l.estado !== 'semestoque' ? 'checked' : ''} ${marcavel ? '' : 'disabled'} aria-label="Aplicar"></td><td>${fdata(l.data)}</td><td class="muted">${esc(l.it.sku ?? '—')}</td><td>${esc(l.prod ? l.prod.nome : l.it.title)}</td><td class="num">${l.qtd}</td><td class="num">${brl(l.it.unit_price)}</td><td><span class="chip ${cor}">${txt}</span></td></tr>`; }).join('') || vazioLinha(7, 'Nada para conferir.')}
+    return `<tr><td><input type="checkbox" class="ml-inc" data-k="${k}" ${l.estado === 'semestoque' || l.estado === 'bonif' ? 'data-bonif="1"' : ''} ${marcavel && l.estado !== 'semestoque' && l.estado !== 'prov' ? 'checked' : ''} ${marcavel ? '' : 'disabled'} aria-label="Aplicar"></td><td>${fdata(l.data)}</td><td class="muted">${esc(l.it.sku ?? '—')}</td><td>${esc(l.prod ? l.prod.nome : l.it.title)}</td><td class="num">${l.qtd}</td><td class="num">${brl(l.it.unit_price)}</td><td><span class="chip ${cor}">${esc(l.rotulo || txt)}</span></td></tr>`; }).join('') || vazioLinha(7, 'Nada para conferir.')}
   </tbody></table></div>`;
   abrirModal({
     titulo: 'Conferir pedidos do Mercado Livre', corpo, largura: 980, rodape: rodapePadrao('Aplicar marcados'), dados: { linhasML: linhas },
@@ -1269,12 +1282,20 @@ function modalConferirML() {
             DB.estoque.push(u); novas.push(u);
           }
           adicionarNaLista('fornecedores', 'Bonificação');
-          venderUnidades(novas, { venda: l.it.unit_price, taxa: l.it.unit_price ? (l.it.sale_fee || 0) / l.it.unit_price : null, frete: null, data: l.data });
+          venderUnidades(novas, { venda: l.it.unit_price, taxa: l.it.unit_price ? (l.it.sale_fee || 0) / l.it.unit_price : null, frete: freteUn(l), data: l.data });
           novas.forEach(u => { u.mlPedido = l.o.id; }); novas_boni += novas.length;
         } else if (l.estado === 'nova') {
-          venderUnidades(us, { venda: l.it.unit_price, taxa: l.it.unit_price ? (l.it.sale_fee || 0) / l.it.unit_price : null, frete: null, data: l.data });
+          venderUnidades(us, { venda: l.it.unit_price, taxa: l.it.unit_price ? (l.it.sale_fee || 0) / l.it.unit_price : null, frete: freteUn(l), data: l.data });
           us.forEach(u => { u.mlPedido = l.o.id; }); novas += us.length;
-        } else if (l.estado === 'dup') { us.forEach(u => { u.mlPedido = l.o.id; }); vinc += us.length; }
+        } else if (l.estado === 'dup' || l.estado === 'prov') {
+          // a venda já existia: liga ao pedido e passa a ter os valores reais do ML (valor, taxa, data e frete)
+          for (const u of us) {
+            u.mlPedido = l.o.id; u.venda = l.it.unit_price; u.dVenda = l.data;
+            u.taxa = l.it.unit_price ? (l.it.sale_fee || 0) / l.it.unit_price : u.taxa;
+            if (freteUn(l) != null) u.frete = freteUn(l);
+          }
+          vinc += us.length;
+        }
       }
       commit(`${plural(novas, 'unidade vendida', 'unidades vendidas')}, ${plural(vinc, 'vinculada', 'vinculadas')}, ${plural(novas_boni, 'bonificação', 'bonificações')}`);
     },
@@ -2166,6 +2187,34 @@ const ACOES = {
     toast('Backup baixado');
   },
   importar: () => $('#arquivo-import').click(),
+  mlFretes: async () => {
+    ML.ocupado = true; let feitos = 0;
+    try {
+      for (;;) {
+        ML.progresso = `Buscando fretes... (${feitos} feitos)`; render();
+        const r = await mlChamar('fretes', { limite: 60 });
+        feitos += r.feitos;
+        if (r.erros?.length) toast(`Aviso do ML: ${r.erros[0]}`, true);
+        if (!r.restantes || !r.feitos) break;
+      }
+      ML.pedidos = await mlListarTudo();
+      toast(`${plural(feitos, 'pedido com frete buscado', 'pedidos com frete buscado')}`);
+    } catch (e) { toast(e.message, true); }
+    ML.ocupado = false; ML.progresso = ''; render();
+  },
+  mlAplicarFretes: () => {
+    const por = {};
+    DB.estoque.forEach(u => { if (u.mlPedido) (por[u.mlPedido] = por[u.mlPedido] || []).push(u); });
+    const mud = [];
+    for (const o of ML.pedidos || []) {
+      const us = por[o.id];
+      if (!us || o.frete_vendedor == null) continue;
+      const f = Math.round(Number(o.frete_vendedor) / us.length * 100) / 100;
+      for (const u of us) if (u.frete == null || Math.abs(u.frete - f) > 0.01) mud.push([u, f]);
+    }
+    if (!mud.length) return toast('Os fretes já estão iguais aos do ML.');
+    confirmar('Aplicar fretes do ML', `Atualizar o frete de <b>${plural(mud.length, 'unidade', 'unidades')}</b> com o valor real cobrado pelo Mercado Livre? Isso muda o lucro dessas vendas. Baixe um backup antes se tiver dúvida.`, () => { mud.forEach(([u, f]) => { u.frete = f; }); commit('Fretes atualizados'); }, { texto: 'Aplicar' });
+  },
   mlConferir: () => modalConferirML(),
   mlVincular: () => modalVincularAnuncios(),
   mlMarcarBonif: () => $$('.ml-inc[data-bonif]').forEach(c => { c.checked = true; }),
