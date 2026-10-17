@@ -1159,6 +1159,13 @@ function sugestaoTitulo(titulo) {
 
 /* Janela de ±10 dias e valor com tolerância (max R$ 1,50 ou 4%): vendas lançadas à mão raramente têm data e preço idênticos aos do pedido. */
 const JANELA_DUP = 10, tolValor = v => Math.max(1.5, 0.04 * v);
+function ehBonificacao(p) {
+  if (!p) return false;
+  if (p.bonificacao) return true;
+  const us = DB.estoque.filter(u => u.produto === p.id);
+  if (us.length) return us.every(u => norm(u.fornecedor).startsWith('bonifica'));
+  return Object.values(DB.config.mlMapa || {}).includes(p.id);   // criado ao vincular um anúncio e nunca comprado
+}
 function mlAnalisar() {
   const linhas = [], usados = new Set();
   const pedidos = (ML.pedidos || []).filter(o => o.status === 'paid').sort((a, b) => a.date_created.localeCompare(b.date_created));
@@ -1168,8 +1175,8 @@ function mlAnalisar() {
       const qtd = it.qty || 1, cands = candidatosMl(it);
       const base = { o, it, prod: cands[0] || null, qtd, data, ids: [] };
       if (!cands.length) { linhas.push({ ...base, estado: 'semprod' }); continue; }
-      const jaP = cands.find(p => DB.estoque.filter(u => u.mlPedido === o.id && u.produto === p.id).length >= qtd);
-      if (jaP) { linhas.push({ ...base, prod: jaP, estado: 'ja' }); continue; }
+      const jaU = DB.estoque.filter(u => u.mlPedido === o.id);
+      if (jaU.length >= qtd) { linhas.push({ ...base, prod: DB.produtos.find(p => p.id === jaU[0].produto) || cands[0], estado: 'ja' }); continue; }
       let achou = null;
       for (const p of cands) {
         const dup = DB.estoque.filter(u => u.produto === p.id && u.status === 'vendido' && !u.vendaFisica && !u.mlPedido && !usados.has(u.id)
@@ -1184,7 +1191,7 @@ function mlAnalisar() {
         if (livres.length >= qtd) { nova = { p, us: livres.slice(0, qtd) }; break; }
       }
       if (nova) { nova.us.forEach(u => usados.add(u.id)); linhas.push({ ...base, prod: nova.p, estado: 'nova', ids: nova.us.map(u => u.id) }); continue; }
-      linhas.push({ ...base, estado: 'semestoque' });
+      linhas.push({ ...base, estado: ehBonificacao(cands[0]) ? 'bonif' : 'semestoque' });
     }
   }
   return linhas;
@@ -1231,7 +1238,8 @@ const ML_ESTADOS = {
   dup: ['c-yellow', 'Já lançada: só vincular', true],
   nova: ['c-green', 'Nova venda', true],
   revisar: ['c-orange', 'Parte já lançada: revise à mão', false],
-  semestoque: ['c-red', 'Sem unidade: lançar como bonificação (custo 0)', true],
+  bonif: ['c-blue', 'Bonificação (sem NF, custo 0)', true],
+  semestoque: ['c-red', 'Sem unidade: compra não lançada? (ou bonificação)', true],
   semprod: ['c-red', 'Anúncio sem produto: vincule', false],
 };
 
@@ -1239,13 +1247,13 @@ function modalConferirML() {
   const linhas = mlAnalisar();
   const cont = e => linhas.filter(l => l.estado === e).length;
   const mostrar = linhas.filter(l => l.estado !== 'ja');
-  const corpo = `<div class="info">${plural(cont('nova'), 'venda nova', 'vendas novas')} · ${plural(cont('dup'), 'já lançada', 'já lançadas')} · ${cont('ja')} já conferidas · para revisar: ${cont('semestoque')} sem unidade à venda, ${cont('semprod')} sem SKU/produto, ${cont('revisar')} parcialmente lançadas.<br>
+  const corpo = `<div class="info">${plural(cont('nova'), 'venda nova', 'vendas novas')} · ${plural(cont('dup'), 'já lançada', 'já lançadas')} · ${cont('ja')} já conferidas · ${plural(cont('bonif'), 'bonificação', 'bonificações')} · para revisar: ${cont('semestoque')} sem unidade à venda, ${cont('semprod')} sem SKU/produto, ${cont('revisar')} parcialmente lançadas.<br>
     ${cont('semprod') ? `<button class="btn btn-sm btn-dark" style="margin:6px 6px 6px 0" data-action="mlVincular">Vincular ${plural(cont('semprod'), 'pedido', 'pedidos')} sem produto</button>` : ''}
     ${cont('semestoque') ? `<button class="btn btn-sm btn-soft" style="margin:6px 0" data-action="mlMarcarBonif">Marcar as ${cont('semestoque')} "sem unidade" como bonificação</button><br>` : ''}
     <span class="hint">Vendas novas dão baixa no estoque. "Bonificação" cria a unidade com fornecedor Bonificação, sem NF e custo 0, e já marca como vendida. As "já lançadas" só ganham o número do pedido, sem duplicar. O frete não vem do ML: nas novas ele fica em branco. Baixe um backup antes de aplicar.</span></div>
   <div class="table-wrap livre" style="margin-top:12px;max-height:48vh;overflow:auto"><table><thead><tr><th></th><th>Data</th><th>SKU</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor un.</th><th>Situação</th></tr></thead><tbody>
   ${mostrar.map(l => { const [cor, txt, marcavel] = ML_ESTADOS[l.estado]; const k = linhas.indexOf(l);
-    return `<tr><td><input type="checkbox" class="ml-inc" data-k="${k}" ${l.estado === 'semestoque' ? 'data-bonif="1"' : ''} ${marcavel && l.estado !== 'semestoque' ? 'checked' : ''} ${marcavel ? '' : 'disabled'} aria-label="Aplicar"></td><td>${fdata(l.data)}</td><td class="muted">${esc(l.it.sku ?? '—')}</td><td>${esc(l.prod ? l.prod.nome : l.it.title)}</td><td class="num">${l.qtd}</td><td class="num">${brl(l.it.unit_price)}</td><td><span class="chip ${cor}">${txt}</span></td></tr>`; }).join('') || vazioLinha(7, 'Nada para conferir.')}
+    return `<tr><td><input type="checkbox" class="ml-inc" data-k="${k}" ${l.estado === 'semestoque' || l.estado === 'bonif' ? 'data-bonif="1"' : ''} ${marcavel && l.estado !== 'semestoque' ? 'checked' : ''} ${marcavel ? '' : 'disabled'} aria-label="Aplicar"></td><td>${fdata(l.data)}</td><td class="muted">${esc(l.it.sku ?? '—')}</td><td>${esc(l.prod ? l.prod.nome : l.it.title)}</td><td class="num">${l.qtd}</td><td class="num">${brl(l.it.unit_price)}</td><td><span class="chip ${cor}">${txt}</span></td></tr>`; }).join('') || vazioLinha(7, 'Nada para conferir.')}
   </tbody></table></div>`;
   abrirModal({
     titulo: 'Conferir pedidos do Mercado Livre', corpo, largura: 980, rodape: rodapePadrao('Aplicar marcados'), dados: { linhasML: linhas },
@@ -1254,7 +1262,7 @@ function modalConferirML() {
       let novas = 0, vinc = 0, novas_boni = 0;
       for (const l of marcados) {
         const us = DB.estoque.filter(u => l.ids.includes(u.id));
-        if (l.estado === 'semestoque') {
+        if (l.estado === 'semestoque' || l.estado === 'bonif') {
           const novas = [];
           for (let j = 0; j < l.qtd; j++) {
             const u = { id: uid(), produto: l.prod.id, custo: 0, venda: null, taxa: null, frete: null, status: 'avenda', unid: 1, dVenda: null, validade: null, lote: null, fornecedor: 'Bonificação', nf: null, vendaFisica: null, dCompra: l.data };
