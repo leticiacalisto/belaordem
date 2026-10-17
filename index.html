@@ -1085,7 +1085,15 @@ function vConfig() {
    Só leitura: mostra os pedidos puxados, não altera estoque nem vendas.
    ========================================================= */
 
-const ML = { status: null, pedidos: null, ocupado: false };
+const ML = { status: null, pedidos: null, ocupado: false, progresso: '' };
+async function mlListarTudo() {            // a nuvem entrega até 1000 por vez
+  const todos = [];
+  for (let off = 0; ; off += 1000) {
+    const { orders } = await mlChamar('list', { limit: 1000, offset: off });
+    todos.push(...orders);
+    if (orders.length < 1000) return todos;
+  }
+}
 
 async function mlChamar(action, extra = {}) {
   return chamar('ml-sync', { method: 'POST', body: { action, ...extra } });
@@ -1103,7 +1111,8 @@ function cardML() {
     corpo = `<div class="stat" style="margin-bottom:12px"><span>Situação</span><b>${estado}</b></div>
       <div class="cfg-actions">
         <button class="btn" data-action="mlConectar">${s?.connected ? 'Reconectar' : 'Conectar Mercado Livre'}</button>
-        <button class="btn btn-dark" data-action="mlSincronizar" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>${ML.ocupado ? 'Sincronizando...' : 'Sincronizar vendas (60 dias)'}</button>
+        <button class="btn btn-dark" data-action="mlSincronizar" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>${ML.ocupado ? (ML.progresso || 'Sincronizando...') : 'Sincronizar vendas (60 dias)'}</button>
+        <button class="btn" data-action="mlHistorico" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Puxar histórico completo</button>
         <button class="btn" data-action="mlConferir" ${ML.pedidos?.length ? '' : 'disabled'}>Conferir com meu estoque</button>
       </div>${tabela}`;
   }
@@ -1160,7 +1169,7 @@ const ML_ESTADOS = {
   dup: ['c-yellow', 'Já lançada: só vincular', true],
   nova: ['c-green', 'Nova venda', true],
   revisar: ['c-orange', 'Parte já lançada: revise à mão', false],
-  semestoque: ['c-red', 'Sem unidade à venda', false],
+  semestoque: ['c-red', 'Sem unidade: lançar como bonificação (custo 0)', true],
   semprod: ['c-red', 'SKU não encontrado', false],
 };
 
@@ -1169,24 +1178,34 @@ function modalConferirML() {
   const cont = e => linhas.filter(l => l.estado === e).length;
   const mostrar = linhas.filter(l => l.estado !== 'ja');
   const corpo = `<div class="info">${plural(cont('nova'), 'venda nova', 'vendas novas')} · ${plural(cont('dup'), 'já lançada', 'já lançadas')} · ${cont('ja')} já conferidas · para revisar: ${cont('semestoque')} sem unidade à venda, ${cont('semprod')} sem SKU/produto, ${cont('revisar')} parcialmente lançadas.<br>
-    <span class="hint">Vendas novas dão baixa no estoque. As "já lançadas" só ganham o número do pedido, sem duplicar. O frete não vem do ML: nas novas ele fica em branco. Baixe um backup antes de aplicar.</span></div>
+    ${cont('semestoque') ? `<button class="btn btn-sm btn-soft" style="margin:6px 0" data-action="mlMarcarBonif">Marcar as ${cont('semestoque')} "sem unidade" como bonificação</button><br>` : ''}
+    <span class="hint">Vendas novas dão baixa no estoque. "Bonificação" cria a unidade com fornecedor Bonificação, sem NF e custo 0, e já marca como vendida. As "já lançadas" só ganham o número do pedido, sem duplicar. O frete não vem do ML: nas novas ele fica em branco. Baixe um backup antes de aplicar.</span></div>
   <div class="table-wrap livre" style="margin-top:12px;max-height:48vh;overflow:auto"><table><thead><tr><th></th><th>Data</th><th>SKU</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor un.</th><th>Situação</th></tr></thead><tbody>
   ${mostrar.map(l => { const [cor, txt, marcavel] = ML_ESTADOS[l.estado]; const k = linhas.indexOf(l);
-    return `<tr><td><input type="checkbox" class="ml-inc" data-k="${k}" ${marcavel ? 'checked' : 'disabled'} aria-label="Aplicar"></td><td>${fdata(l.data)}</td><td class="muted">${esc(l.it.sku ?? '—')}</td><td>${esc(l.prod ? l.prod.nome : l.it.title)}</td><td class="num">${l.qtd}</td><td class="num">${brl(l.it.unit_price)}</td><td><span class="chip ${cor}">${txt}</span></td></tr>`; }).join('') || vazioLinha(7, 'Nada para conferir.')}
+    return `<tr><td><input type="checkbox" class="ml-inc" data-k="${k}" ${l.estado === 'semestoque' ? 'data-bonif="1"' : ''} ${marcavel && l.estado !== 'semestoque' ? 'checked' : ''} ${marcavel ? '' : 'disabled'} aria-label="Aplicar"></td><td>${fdata(l.data)}</td><td class="muted">${esc(l.it.sku ?? '—')}</td><td>${esc(l.prod ? l.prod.nome : l.it.title)}</td><td class="num">${l.qtd}</td><td class="num">${brl(l.it.unit_price)}</td><td><span class="chip ${cor}">${txt}</span></td></tr>`; }).join('') || vazioLinha(7, 'Nada para conferir.')}
   </tbody></table></div>`;
   abrirModal({
     titulo: 'Conferir pedidos do Mercado Livre', corpo, largura: 980, rodape: rodapePadrao('Aplicar marcados'), dados: { linhasML: linhas },
     onConfirm: () => {
       const marcados = $$('.ml-inc:checked').map(c => MODAL.linhasML[+c.dataset.k]);
-      let novas = 0, vinc = 0;
+      let novas = 0, vinc = 0, novas_boni = 0;
       for (const l of marcados) {
         const us = DB.estoque.filter(u => l.ids.includes(u.id));
-        if (l.estado === 'nova') {
+        if (l.estado === 'semestoque') {
+          const novas = [];
+          for (let j = 0; j < l.qtd; j++) {
+            const u = { id: uid(), produto: l.prod.id, custo: 0, venda: null, taxa: null, frete: null, status: 'avenda', unid: 1, dVenda: null, validade: null, lote: null, fornecedor: 'Bonificação', nf: null, vendaFisica: null, dCompra: l.data };
+            DB.estoque.push(u); novas.push(u);
+          }
+          adicionarNaLista('fornecedores', 'Bonificação');
+          venderUnidades(novas, { venda: l.it.unit_price, taxa: l.it.unit_price ? (l.it.sale_fee || 0) / l.it.unit_price : null, frete: null, data: l.data });
+          novas.forEach(u => { u.mlPedido = l.o.id; }); novas_boni += novas.length;
+        } else if (l.estado === 'nova') {
           venderUnidades(us, { venda: l.it.unit_price, taxa: l.it.unit_price ? (l.it.sale_fee || 0) / l.it.unit_price : null, frete: null, data: l.data });
           us.forEach(u => { u.mlPedido = l.o.id; }); novas += us.length;
         } else if (l.estado === 'dup') { us.forEach(u => { u.mlPedido = l.o.id; }); vinc += us.length; }
       }
-      commit(`${plural(novas, 'unidade vendida', 'unidades vendidas')}, ${plural(vinc, 'vinculada', 'vinculadas')}`);
+      commit(`${plural(novas, 'unidade vendida', 'unidades vendidas')}, ${plural(vinc, 'vinculada', 'vinculadas')}, ${plural(novas_boni, 'bonificação', 'bonificações')}`);
     },
   });
 }
@@ -1194,7 +1213,7 @@ function modalConferirML() {
 async function mlAtualizar() {
   try {
     ML.status = await mlChamar('status');
-    if (ML.status.connected) ML.pedidos = (await mlChamar('list', { limit: 1000 })).orders;
+    if (ML.status.connected) ML.pedidos = await mlListarTudo();
   } catch (e) { ML.status = { connected: false }; toast(e.message, true); }
   if (UI.view === 'config') render();
 }
@@ -2074,15 +2093,31 @@ const ACOES = {
     toast('Backup baixado');
   },
   importar: () => $('#arquivo-import').click(),
+  mlConferir: () => modalConferirML(),
+  mlMarcarBonif: () => $$('.ml-inc[data-bonif]').forEach(c => { c.checked = true; }),
   mlConectar: async () => {
     try { window.open((await mlChamar('conectar')).url, '_blank'); } catch (e) { toast(e.message, true); }
   },
   sair: () => confirmar('Sair', 'Sair da sua conta neste navegador? Os dados continuam salvos na nuvem.', () => { sairDaConta(); }, { texto: 'Sair' }),
+  mlHistorico: async () => {
+    // mês a mês desde jan/2025 (anterior à abertura da conta devolve 0, sem problema)
+    ML.ocupado = true; let total = 0; const hoje = new Date();
+    try {
+      for (let d = new Date(Date.UTC(2025, 0, 1)); d <= hoje; d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))) {
+        const fim = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+        ML.progresso = `Buscando ${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}...`; render();
+        total += (await mlChamar('sync', { desde: d.toISOString(), ate: (fim < hoje ? fim : hoje).toISOString() })).synced;
+      }
+      ML.pedidos = await mlListarTudo();
+      toast(`Histórico completo: ${plural(total, 'pedido encontrado', 'pedidos encontrados')} (${ML.pedidos.length} guardados)`);
+    } catch (e) { toast(e.message, true); }
+    ML.ocupado = false; ML.progresso = ''; render();
+  },
   mlSincronizar: async () => {
     ML.ocupado = true; render();
     try {
       const { synced } = await mlChamar('sync', { days: 60 });
-      ML.pedidos = (await mlChamar('list', { limit: 1000 })).orders;
+      ML.pedidos = await mlListarTudo();
       toast(`${plural(synced, 'pedido sincronizado', 'pedidos sincronizados')}`);
     } catch (e) { toast(e.message, true); }
     ML.ocupado = false; render();
