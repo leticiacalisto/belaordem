@@ -1143,9 +1143,10 @@ function cardML() {
         <button class="btn btn-dark" data-action="mlSincronizar" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>${ML.ocupado ? (ML.progresso || 'Sincronizando...') : 'Sincronizar vendas (60 dias)'}</button>
         <button class="btn" data-action="mlHistorico" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Puxar histórico completo</button>
         <button class="btn" data-action="mlFretes" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Buscar fretes do ML</button>
+        <button class="btn" data-action="mlAdsTeste" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Testar anúncios patrocinados</button>
         <button class="btn" data-action="mlAplicarFretes" ${ML.pedidos?.some(o => o.frete_vendedor != null) ? '' : 'disabled'}>Aplicar fretes nas vendas</button>
         <button class="btn" data-action="mlConferir" ${ML.pedidos?.length ? '' : 'disabled'}>Conferir com meu estoque</button>
-      </div>${ML.autoMsg ? `<p class="hint" style="margin:8px 0 0">${esc(ML.autoMsg)}</p>` : ''}${mlDivergencias()}${tabela}`;
+      </div>${ML.autoMsg ? `<p class="hint" style="margin:8px 0 0">${esc(ML.autoMsg)}</p>` : ''}${ML.adsMsg ? `<p class="hint" style="margin:4px 0 0">${esc(ML.adsMsg)}</p>` : ''}${mlDivergencias()}${tabela}`;
   }
   return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Mercado Livre</h2></div>${corpo}</div>`;
 }
@@ -1591,13 +1592,13 @@ function mlDivergencias() {
     if (u.status !== 'vendido' || u.vendaFisica || !u.dVenda) continue;
     const x = lin(u.dVenda.slice(0, 7)); x.su++; x.sv += u.venda || 0;
   }
-  const meses = Object.keys(m).sort().slice(-6).reverse();
+  const todos = Object.keys(m).sort().reverse(), meses = ML.todosMeses ? todos : todos.slice(0, 6);
   const tot = meses.reduce((t, k) => t + Math.abs(m[k].su - m[k].mu), 0);
   return `<div class="sub-title" style="margin-top:16px">Conferência mês a mês: ML contra site ${tot ? `<span class="chip c-orange">${tot} unidade(s) de diferença</span>` : '<span class="chip c-green">tudo batendo</span>'}</div>
     <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">ML un.</th><th class="num">Site un.</th><th class="num">Dif.</th><th class="num">ML R$</th><th class="num">Site R$</th><th class="num">Dif. R$</th></tr></thead><tbody>
     ${meses.map(k => { const x = m[k], du = x.su - x.mu, dv = x.sv - x.mv; const cls = Math.abs(du) || Math.abs(dv) > 1 ? 'neg' : '';
       return `<tr><td>${nomeMes(k)}</td><td class="num">${x.mu}</td><td class="num">${x.su}</td><td class="num ${cls}">${du}</td><td class="num">${brl(x.mv)}</td><td class="num">${brl(x.sv)}</td><td class="num ${cls}">${brl(dv)}</td></tr>`; }).join('')}
-    </tbody></table></div>`;
+    </tbody></table></div>${todos.length > 6 ? `<button class="btn btn-sm btn-soft" style="margin-top:8px" data-action="mlTodosMeses">${ML.todosMeses ? 'Mostrar só os 6 últimos meses' : `Ver todos os ${todos.length} meses (desde ${nomeMes(todos[todos.length - 1])})`}</button>` : ''}`;
 }
 
 async function mlAtualizar() {
@@ -2513,6 +2514,16 @@ const ACOES = {
     }
     if (!mud.length) return toast('Os fretes já estão iguais aos do ML.');
     confirmar('Aplicar fretes do ML', `Atualizar o frete de <b>${plural(mud.length, 'unidade', 'unidades')}</b> com o valor real cobrado pelo Mercado Livre? Isso muda o lucro dessas vendas. Baixe um backup antes se tiver dúvida.`, () => { mud.forEach(([u, f]) => { u.frete = f; }); commit('Fretes atualizados'); }, { texto: 'Aplicar' });
+  },
+  mlTodosMeses: () => { ML.todosMeses = !ML.todosMeses; render(); },
+  mlAdsTeste: async () => {
+    ML.ocupado = true; ML.progresso = 'Consultando anúncios patrocinados...'; render();
+    try {
+      const r = await mlChamar('ads_teste');
+      ML.adsMsg = `Teste de publicidade: ${r.passos.join(' · ')}${r.anunciantes ? '' : ' · nenhum anunciante encontrado'}`;
+      toast(ML.adsMsg);
+    } catch (e) { ML.adsMsg = `Teste de publicidade falhou: ${e.message}`; toast(e.message, true); }
+    ML.ocupado = false; ML.progresso = ''; render();
   },
   mlConferir: () => modalConferirML(),
   notif: () => { const pn = $('#notif-panel'); if (pn.hidden) { recalcPendencias(); renderNotifPanel(); pn.hidden = false; } else pn.hidden = true; },

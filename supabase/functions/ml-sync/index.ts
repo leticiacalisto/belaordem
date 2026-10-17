@@ -57,6 +57,43 @@ async function fretes(limite: number) {
   return { feitos, restantes: count ?? 0, erros: erros.slice(0, 3) };
 }
 
+// ---- Teste de publicidade (Product Ads) e faturamento: guarda as respostas reais do ML em ml_ads_raw para ajustarmos o painel
+async function adsTeste() {
+  const { token } = await getAccess();
+  const passos: string[] = [];
+  const reg = async (tipo: string, url: string, h: Record<string, string>) => {
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}`, ...h } });
+    const t = await r.text();
+    let j: any = null;
+    try { j = JSON.parse(t); } catch { /* não é JSON */ }
+    await db.from("ml_ads_raw").insert({ tipo, url: url.replace(/access_token=[^&]+/, ""), status: r.status, corpo: j ?? { texto: t.slice(0, 2000) } });
+    passos.push(`${tipo}: HTTP ${r.status}`);
+    return { r, j };
+  };
+  const hoje = new Date(), ini = new Date(Date.now() - 14 * 86_400_000);
+  const d2 = hoje.toISOString().slice(0, 10), d1 = ini.toISOString().slice(0, 10);
+
+  // 1) anunciantes (precisa de Product Ads ativo na conta)
+  const a = await reg("anunciantes", "https://api.mercadolibre.com/advertising/advertisers?product_id=PADS", { "Api-Version": "1" });
+  const lista = a.j?.advertisers ?? a.j?.results ?? (Array.isArray(a.j) ? a.j : []);
+  const adv = lista[0];
+  const id = adv?.advertiser_id ?? adv?.id, site = adv?.site_id ?? "MLB";
+  if (id) {
+    const q = (m: string) => `date_from=${d1}&date_to=${d2}&metrics=${m}&aggregation_type=DAILY&limit=10`;
+    for (const m of ["clicks,prints,cost,cpc,acos,total_amount,units_quantity", "clicks,prints,cost"]) {
+      const u1 = await reg("campanhas_search", `https://api.mercadolibre.com/advertising/${site}/advertisers/${id}/product_ads/campaigns/search?${q(m)}`, { "api-version": "2" });
+      if (u1.r.ok) break;
+      const u2 = await reg("campanhas", `https://api.mercadolibre.com/advertising/advertisers/${id}/product_ads/campaigns?${q(m)}`, { "api-version": "2" });
+      if (u2.r.ok) break;
+    }
+  }
+  // 2) faturamento mensal (cobranças e créditos do ML), para achar a linha de publicidade
+  const per = await reg("faturamento_periodos", "https://api.mercadolibre.com/billing/integration/monthly/periods?group=ML&document_type=BILL&limit=6", {});
+  const chave = per.j?.results?.[0]?.key ?? per.j?.periods?.[0]?.key ?? per.j?.[0]?.key;
+  if (chave) await reg("faturamento_detalhes", `https://api.mercadolibre.com/billing/integration/periods/key/${chave}/group/ML/details?document_type=BILL&limit=150`, {});
+  return { passos, anunciantes: lista.length, advertiser: id ?? null };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (!(await autenticar(req))) return json({ error: "não autorizado" }, 401);
@@ -77,6 +114,7 @@ Deno.serve(async (req) => {
       if (arq) { try { n += await sync(desde, ate, true); } catch (_) { /* conta sem arquivados */ } }
       return json({ synced: n });
     }
+    if (action === "ads_teste") return json(await adsTeste());
     if (action === "fretes") return json(await fretes(Math.min(Number(body.limite) || 60, 100)));
     if (action === "list") {
       const off = Number(body.offset) || 0, lim = Math.min(Number(body.limit) || 1000, 1000);

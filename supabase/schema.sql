@@ -51,3 +51,11 @@ alter table ml_orders add column if not exists envio_status text;
 alter table ml_orders add column if not exists envio_tipo text;
 alter table ml_orders add column if not exists frete_em timestamptz;
 create index if not exists ml_orders_frete_idx on ml_orders (frete_em) where frete_em is null;
+
+-- Respostas cruas da API de publicidade/faturamento do ML (para ajustar o painel de marketing)
+create table if not exists ml_ads_raw (
+  id bigserial primary key,
+  criado timestamptz not null default now(),
+  tipo text, url text, status int, corpo jsonb
+);
+alter table ml_ads_raw enable row level security;
