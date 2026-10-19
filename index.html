@@ -390,6 +390,8 @@ const sum = (arr, f) => arr.reduce((s, x) => s + (Number(f(x)) || 0), 0);
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
 const ICON = {
+  play: '<path d="M7 4.5v15l12-7.5z"/>',
+  pause: '<path d="M8 5v14M16 5v14"/>',
   home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
   box: '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
   layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
@@ -1280,22 +1282,53 @@ async function enviarEstoqueML(itens) {
   ML.ocupado = false; ML.progresso = ''; render();
 }
 function cardAnuncios() {
-  const s = ML.status, ordem = { active: 0, paused: 1 };
-  const an = [...(ML.anuncios || [])].sort((x, y) => (ordem[x.status] ?? 2) - (ordem[y.status] ?? 2) || (x.titulo || '').localeCompare(y.titulo || '', 'pt-BR'));
-  const nAtivos = an.filter(a => a.status === 'active').length;
-  const linhas = an.map(a => { const p = anuncioProduto(a); return { a, p, site: p ? unidadesDisponiveis(p.id).length : null }; });
+  const s = ML.status, ordem = { active: 0, paused: 1 }, f = UI.estoque.anFiltro || 'todos';
+  const todos = [...(ML.anuncios || [])].sort((x, y) => (ordem[x.status] ?? 2) - (ordem[y.status] ?? 2) || (x.titulo || '').localeCompare(y.titulo || '', 'pt-BR'))
+    .map(a => { const p = anuncioProduto(a); return { a, p, site: p ? unidadesDisponiveis(p.id).length : null }; });
+  const diverge = l => l.p && l.a.qtd !== l.site;
+  const cont = { ativos: todos.filter(l => l.a.status === 'active').length, pausados: todos.filter(l => l.a.status === 'paused').length, divergentes: todos.filter(diverge).length };
+  const linhas = todos.filter(l => f === 'ativos' ? l.a.status === 'active' : f === 'pausados' ? l.a.status === 'paused' : f === 'divergentes' ? diverge(l) : true);
   const off = ML.ocupado || !s?.connected ? 'disabled' : '';
   const chipSt = st => st === 'active' ? '<span class="chip c-green">Ativo</span>' : st === 'paused' ? '<span class="chip c-orange">Inativo</span>' : `<span class="chip">${esc(st || '—')}</span>`;
+  const filtro = (k, rotulo) => `<button class="btn btn-sm ${f === k ? 'btn-dark' : 'btn-soft'}" data-action="set" data-path="estoque.anFiltro" data-value="${f === k ? 'todos' : k}" aria-pressed="${f === k}">${rotulo} (${cont[k]})</button>`;
   const tabela = !ML.anuncios ? '<p class="hint" style="margin-top:12px">Aperte "Atualizar anúncios do ML" para carregar os anúncios (também carregam sozinhos ao abrir o site).</p>'
-    : `<div class="table-wrap livre" style="margin-top:14px;max-height:460px;overflow:auto"><table><thead><tr><th>Anúncio</th><th>Produto</th><th>Situação</th><th class="num">Preço ML</th><th class="num">Taxa</th><th class="num">Estoque ML</th><th class="num">Estoque site</th><th></th></tr></thead><tbody>
-      ${linhas.map(l => { const a = l.a, mexe = a.status === 'active' || a.status === 'paused';
-        return `<tr><td>${esc((a.titulo || '').slice(0, 58))}</td><td>${l.p ? esc(l.p.nome.slice(0, 30)) : '<span class="chip c-orange">sem vínculo</span>'}</td><td>${chipSt(a.status)}</td><td class="num">${brl(a.preco)}</td><td class="num">${a.taxa_pct != null ? pct(a.taxa_pct) : '—'}</td><td class="num">${a.qtd ?? '—'}</td><td class="num ${l.p && a.qtd !== l.site ? 'neg' : ''}">${l.site ?? '—'}</td>
-        <td style="white-space:nowrap">${mexe ? `<button class="btn btn-sm btn-soft" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${a.status === 'active' ? 'paused' : 'active'}" ${off}>${a.status === 'active' ? 'Pausar' : 'Ativar'}</button> ` : ''}${l.p && mexe ? `<button class="btn btn-sm" data-action="mlEnviarUm" data-item="${esc(a.item_id)}" ${off}>Enviar estoque</button>` : ''}</td></tr>`; }).join('')}
-      </tbody></table></div><p class="hint" style="margin-top:6px">${plural(nAtivos, 'anúncio ativo', 'anúncios ativos')} e ${an.length - nAtivos} inativo(s). Preço, taxa e frete dos ativos vêm do ML e atualizam as unidades à venda sozinhos. Estoque e ativar/pausar só mudam no ML quando você confirmar.</p>`;
+    : `<div class="table-wrap livre" style="margin-top:14px;max-height:520px;overflow:auto"><table><thead><tr><th>Anúncio</th><th>Produto</th><th>Situação</th><th class="num">Preço ML</th><th class="num">Taxa</th><th class="num">Estoque ML</th><th class="num">Estoque site</th><th></th></tr></thead><tbody>
+      ${linhas.length ? linhas.map(l => { const a = l.a, mexe = a.status === 'active' || a.status === 'paused', ativo = a.status === 'active';
+        return `<tr class="clic" data-action="mlAbrirAnuncio" data-item="${esc(a.item_id)}"><td>${esc((a.titulo || '').slice(0, 58))}</td><td>${l.p ? esc(l.p.nome.slice(0, 30)) : '<span class="chip c-orange">sem vínculo</span>'}</td><td>${chipSt(a.status)}</td><td class="num">${brl(a.preco)}</td><td class="num">${a.taxa_pct != null ? pct(a.taxa_pct) : '—'}</td><td class="num">${a.qtd ?? '—'}</td><td class="num ${diverge(l) ? 'neg' : ''}">${l.site ?? '—'}</td>
+        <td style="white-space:nowrap">${mexe ? `<button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}" title="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" aria-label="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" ${off}>${ic(ativo ? 'pause' : 'play', 18)}</button> ` : ''}${l.p && mexe ? `<button class="btn btn-sm" data-action="mlEnviarUm" data-item="${esc(a.item_id)}" ${off}>Enviar estoque</button>` : ''}</td></tr>`; }).join('') : vazioLinha(8, 'Nenhum anúncio neste filtro.')}
+      </tbody></table></div><p class="hint" style="margin-top:6px">${plural(cont.ativos, 'anúncio ativo', 'anúncios ativos')} e ${cont.pausados} pausado(s). Clique numa linha para ver os detalhes. Preço, taxa e frete dos ativos vêm do ML e atualizam as unidades à venda sozinhos. Estoque e ativar/pausar só mudam no ML quando você confirmar.</p>`;
   return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Anúncios do ML e estoque</h2></div>
-    <div class="cfg-actions"><button class="btn" data-action="mlAnuncios" ${off}>Atualizar anúncios do ML</button>
-      <button class="btn btn-dark" data-action="mlEnviarEstoque" ${ML.anuncios?.length && !ML.ocupado ? '' : 'disabled'}>Enviar estoque de todos os anúncios ativos...</button></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" data-action="mlAnuncios" ${off}>Atualizar anúncios do ML</button>
+        <button class="btn btn-dark" data-action="mlEnviarEstoque" ${ML.anuncios?.length && !ML.ocupado ? '' : 'disabled'}>Enviar estoque de todos os anúncios ativos...</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${filtro('ativos', 'Ativos')}${filtro('pausados', 'Pausados')}${filtro('divergentes', 'Divergentes')}</div></div>
     ${ML.anunciosMsg ? `<p class="hint" style="margin:8px 0 0">${esc(ML.anunciosMsg)}</p>` : ''}${tabela}</div>`;
+}
+function modalAnuncio(itemId) {
+  const a = (ML.anuncios || []).find(x => x.item_id === itemId); if (!a) return;
+  const p = anuncioProduto(a), site = p ? unidadesDisponiveis(p.id).length : null, fr = freteRecente(a.item_id);
+  const ativo = a.status === 'active', mexe = ativo || a.status === 'paused';
+  const link = `https://produto.mercadolivre.com.br/${a.item_id.replace('MLB', 'MLB-')}`;
+  const corpo = `<div class="info">${esc(a.titulo)}</div>
+    <div class="stat-row">
+      <div class="stat"><span>Situação</span><b>${ativo ? 'Ativo' : a.status === 'paused' ? 'Inativo' : esc(a.status || '—')}</b></div>
+      <div class="stat"><span>Preço ML</span><b>${brl(a.preco)}</b></div>
+      <div class="stat"><span>Taxa</span><b>${a.taxa_pct != null ? pct(a.taxa_pct) : '—'}</b></div>
+      <div class="stat"><span>Frete recente</span><b>${fr != null ? brl(fr) : '—'}</b></div>
+      <div class="stat"><span>Estoque no ML</span><b>${a.qtd ?? '—'}</b></div>
+      <div class="stat"><span>Estoque no site</span><b>${site ?? '—'}</b></div></div>
+    <div class="form-grid">${campo('an-prod', 'Produto', `<input id="an-prod" value="${esc(p ? labelProduto(p) : 'Sem vínculo com um produto')}" disabled>`, 'full')}</div>
+    ${p ? `<div class="form-grid">${campo('an-qtd', 'Quantidade a enviar ao ML', `<input id="an-qtd" type="number" min="0" value="${site}">`)}</div>` : '<p class="hint">Este anúncio não está ligado a nenhum produto. Vincule em Dados e backup → Conferir com meu estoque.</p>'}
+    <p class="hint">${esc(a.item_id)}${a.tipo ? ` · tipo ${esc(a.tipo)}` : ''}${a.frete_gratis ? ' · frete grátis' : ''} · <a href="${link}" target="_blank" rel="noopener">Abrir no Mercado Livre</a></p>`;
+  abrirModal({
+    titulo: 'Anúncio do ML', corpo, largura: 640,
+    rodape: `<button class="btn btn-soft" data-action="fecharModal">Fechar</button>${mexe ? `<button class="btn" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}">${ic(ativo ? 'pause' : 'play', 16)} ${ativo ? 'Pausar' : 'Ativar'}</button>` : ''}${p && mexe ? '<button class="btn btn-dark" data-action="confirmarModal">Enviar estoque</button>' : ''}`,
+    onConfirm: () => {
+      const q = parseInt(val('an-qtd'), 10);
+      if (!(q >= 0)) return erro('Confira a quantidade.');
+      confirmar('Enviar estoque ao ML', `Enviar <b>${q}</b> unidade(s) para o anúncio <b>${esc((a.titulo || '').slice(0, 60))}</b>? Hoje o ML mostra ${a.qtd ?? '—'}.${q === 0 ? ' Com 0, o ML pausa o anúncio.' : ''}`, () => enviarEstoqueML([{ item_id: a.item_id, qtd: q }]), { texto: 'Enviar' });
+    },
+  });
 }
 function modalEnviarEstoqueML() {
   const an = (ML.anuncios || []).filter(a => a.status === 'active' && !a.tem_variacoes);
@@ -2948,6 +2981,7 @@ const ACOES = {
     ML.ocupado = false; ML.progresso = ''; render();
   },
   mlEnviarEstoque: () => modalEnviarEstoqueML(),
+  mlAbrirAnuncio: el => modalAnuncio(el.dataset.item),
   mlAnuncioStatus: el => {
     const a = (ML.anuncios || []).find(x => x.item_id === el.dataset.item); if (!a) return;
     const para = el.dataset.to, ativar = para === 'active';
