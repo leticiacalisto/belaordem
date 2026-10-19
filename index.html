@@ -1146,6 +1146,7 @@ function cardML() {
         <button class="btn" data-action="mlHistorico" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Puxar histórico completo</button>
         <button class="btn" data-action="mlFretes" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Buscar fretes do ML</button>
         <button class="btn" data-action="mlAdsTeste" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Testar anúncios patrocinados</button>
+        <button class="btn" data-action="mlReclamacoes" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Buscar reclamações e devoluções</button>
         <button class="btn" data-action="mlAplicarFretes" ${ML.pedidos?.some(o => o.frete_vendedor != null) ? '' : 'disabled'}>Aplicar fretes nas vendas</button>
         <button class="btn" data-action="mlConferir" ${ML.pedidos?.length ? '' : 'disabled'}>Conferir com meu estoque</button>
       </div>${ML.autoMsg ? `<p class="hint" style="margin:8px 0 0">${esc(ML.autoMsg)}</p>` : ''}${ML.adsMsg ? `<p class="hint" style="margin:4px 0 0">${esc(ML.adsMsg)}</p>` : ''}${mlDivergencias()}${tabela}`;
@@ -2597,6 +2598,16 @@ const ACOES = {
     confirmar('Aplicar fretes do ML', `Atualizar o frete de <b>${plural(mud.length, 'unidade', 'unidades')}</b> com o valor real cobrado pelo Mercado Livre? Isso muda o lucro dessas vendas. Baixe um backup antes se tiver dúvida.`, () => { mud.forEach(([u, f]) => { u.frete = f; }); commit('Fretes atualizados'); }, { texto: 'Aplicar' });
   },
   mlTodosMeses: () => { ML.todosMeses = !ML.todosMeses; render(); },
+  mlReclamacoes: async () => {
+    ML.ocupado = true; ML.progresso = 'Consultando reclamações e devoluções...'; render();
+    try {
+      const peds = (ML.pedidos?.length ? ML.pedidos : await mlListarTudo()).filter(o => o.status !== 'paid').map(o => o.id);
+      const r = await mlChamar('reclamacoes_teste', { pedidos: peds });
+      ML.adsMsg = `Reclamações: ${r.reclamacoes} encontradas · ${Object.entries(r.passos).map(([k, v]) => `${k} ×${v}`).join(' · ')}`;
+      toast(ML.adsMsg);
+    } catch (e) { ML.adsMsg = `Consulta de reclamações falhou: ${e.message}`; toast(e.message, true); }
+    ML.ocupado = false; ML.progresso = ''; render();
+  },
   mlAdsTeste: async () => {
     ML.ocupado = true; ML.progresso = 'Consultando anúncios patrocinados...'; render();
     try {

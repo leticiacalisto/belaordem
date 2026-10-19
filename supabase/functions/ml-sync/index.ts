@@ -157,6 +157,43 @@ async function cobrancas(key: string, offset: number, paginas: number) {
   return { proximo: off, total, gravados };
 }
 
+// ---- Reclamações / devoluções do ML (só leitura): guarda as respostas cruas em ml_ads_raw (tipo recl_*) para analisarmos
+async function reclamacoesTeste(pedidos: number[]) {
+  const { token } = await getAccess();
+  const passos: Record<string, number> = {};
+  const base = "https://api.mercadolibre.com/post-purchase";
+  const reg = async (tipo: string, url: string) => {
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const t = await r.text();
+    let j: any = null;
+    try { j = JSON.parse(t); } catch { /* não é JSON */ }
+    await db.from("ml_ads_raw").insert({ tipo, url, status: r.status, corpo: j ?? { texto: t.slice(0, 2000) } });
+    passos[`${tipo} ${r.status}`] = (passos[`${tipo} ${r.status}`] ?? 0) + 1;
+    return { r, j };
+  };
+  const claims = new Set<number>();
+  let off = 0;
+  for (let p = 0; p < 8; p++) {
+    const { j } = await reg("recl_lista", `${base}/v1/claims/search?limit=50&offset=${off}`);
+    const d: any[] = j?.data ?? [];
+    d.forEach((c) => c?.id && claims.add(Number(c.id)));
+    if (d.length < 50) break;
+    off += 50;
+  }
+  const ids = pedidos.slice(0, 80);
+  for (let i = 0; i < ids.length; i += 5) {
+    await Promise.all(ids.slice(i, i + 5).map(async (id) => {
+      const { j } = await reg("recl_pedido", `${base}/v1/claims/search?resource=order&resource_id=${id}`);
+      (j?.data ?? []).forEach((c: any) => c?.id && claims.add(Number(c.id)));
+    }));
+  }
+  const lista = [...claims].slice(0, 60);
+  for (let i = 0; i < lista.length; i += 5) {
+    await Promise.all(lista.slice(i, i + 5).map((id) => reg("recl_devolucao", `${base}/v2/claims/${id}/returns`)));
+  }
+  return { passos, reclamacoes: claims.size };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (!(await autenticar(req))) return json({ error: "não autorizado" }, 401);
@@ -188,6 +225,7 @@ Deno.serve(async (req) => {
       return json({ ads, cobrancas: cob });
     }
     if (action === "ads_teste") return json(await adsTeste());
+    if (action === "reclamacoes_teste") return json(await reclamacoesTeste((body.pedidos ?? []).map(Number)));
     if (action === "fretes") return json(await fretes(Math.min(Number(body.limite) || 60, 100)));
     if (action === "list") {
       const off = Number(body.offset) || 0, lim = Math.min(Number(body.limit) || 1000, 1000);
