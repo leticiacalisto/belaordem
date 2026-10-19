@@ -289,6 +289,19 @@ async function estoqueMl(itens: { item_id: string; qtd: number }[]) {
   return { resultados: res };
 }
 
+// Ativa ou pausa um anúncio no ML
+async function statusAnuncio(itemId: string, status: string) {
+  const { token } = await getAccess();
+  if (!/^MLB\d+$/.test(itemId) || !["active", "paused"].includes(status)) throw new Error("dados inválidos");
+  const r = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
+    method: "PUT", headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ status }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`ML ${r.status}: ${j.message ?? j.error ?? ""} ${JSON.stringify(j.cause ?? "").slice(0, 160)}`);
+  await db.from("ml_anuncios").update({ status: j.status ?? status, atualizado: new Date().toISOString() }).eq("item_id", itemId);
+  return { item_id: itemId, status: j.status ?? status };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (!(await autenticar(req))) return json({ error: "não autorizado" }, 401);
@@ -324,6 +337,7 @@ Deno.serve(async (req) => {
     if (action === "fretes") return json(await fretes(Math.min(Number(body.limite) || 60, 100)));
     if (action === "envios") return json(await envios(Math.min(Number(body.limite) || 40, 80)));
     if (action === "anuncios") return json(await anuncios());
+    if (action === "anuncio_status") return json(await statusAnuncio(String(body.item_id), String(body.status)));
     if (action === "anuncios_list") {
       const { data, error } = await db.from("ml_anuncios").select("*").order("titulo");
       if (error) throw error;
