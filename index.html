@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bela Ordem</title>
+<link rel="icon" type="image/svg+xml" href="assets/icone.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icone-32.png">
+<link rel="apple-touch-icon" href="assets/icone-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -28,7 +31,8 @@ button{cursor:pointer}
 /* ---------- topo ---------- */
 .topbar{position:sticky;top:0;z-index:30;height:60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:20px;padding:0 24px}
 .logo{display:flex;align-items:center;gap:2px;font-size:23px;font-weight:400;letter-spacing:-.02em;color:var(--brand);cursor:pointer;width:200px;flex:none;border:0;background:none;padding:0}
-.logo svg{color:var(--accent-2);margin-top:3px}
+.logo-img{height:40px;width:auto;display:block}
+.login-logo{display:block;height:64px;width:auto;margin:0 auto 14px}
 .search{position:relative;flex:1;max-width:524px}
 .search input{width:100%;height:36px;border:1px solid transparent;background:#f3f3f6;border-radius:10px;padding:0 40px;font-size:13.5px;outline:none}
 .search input::placeholder{color:#8a8a94}
@@ -317,7 +321,7 @@ td.empty-cell{padding:40px;text-align:center;color:var(--faint);white-space:norm
 <body>
 <header class="topbar">
   <button class="icon-btn menu-toggle" data-action="toggleMenu" aria-label="Abrir menu"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-  <button class="logo" data-action="go" data-view="inicio" aria-label="Início">bela&nbsp;ordem<svg width="30" height="26" viewBox="0 0 30 26" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l9 9-9 9M15 4l9 9-9 9"/></svg></button>
+  <button class="logo" data-action="go" data-view="inicio" aria-label="Início"><img class="logo-img" src="assets/logo-horizontal.png" alt="Bela Ordem"></button>
   <div class="search">
     <svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
     <input id="busca-global" type="search" placeholder="Buscar produtos, NF, clientes..." autocomplete="off" aria-label="Busca geral">
@@ -553,7 +557,10 @@ function venderUnidades(us, { venda, taxa, frete, data, vendaFisica }) {
   for (const u of us) {
     u.status = 'vendido'; u.unid = 0; u.dVenda = data;
     if (venda != null) u.venda = venda;
-    if (vendaFisica) { u.vendaFisica = vendaFisica; u.taxa = 0; u.frete = 0; }
+    if (vendaFisica) {
+      u.vendaFisica = vendaFisica; u.taxa = 0; u.frete = 0;
+      if (venda == null) { const pf = DB.produtos.find(x => x.id === u.produto)?.precoFisica; if (pf != null) u.venda = pf; }   // V. Venda Física do produto
+    }
     else { if (taxa != null) u.taxa = taxa; if (frete != null) u.frete = frete; }
   }
 }
@@ -2235,6 +2242,7 @@ function modalProduto(id = null) {
   </div>
   <div class="form-grid"><div class="f full"><span class="lbl">Categorias</span><div class="chips" style="gap:8px">${DB.config.tipos.map(t => `<label class="check" style="background:#f6f6f9;padding:6px 10px;border-radius:8px"><input type="checkbox" class="pr-tipo" value="${esc(t)}" ${(p.tipos || []).includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('')}</div></div></div>
   <div class="form-grid">${campo('pr-ncm', 'NCM', inputTxt('pr-ncm', p.ncm))}${campo('pr-ean', 'EAN', inputTxt('pr-ean', p.ean))}</div>
+  <div class="form-grid">${campo('pr-pvf', 'V. Venda Física (R$)', inputTxt('pr-pvf', fmtIn(p.precoFisica), 'inputmode="decimal" placeholder="Só vale quando a unidade entra numa venda física"'), 'full')}</div>
   <div class="form-grid">${campo('pr-eanalt', 'Outros EANs (separados por vírgula)', inputTxt('pr-eanalt', (p.eanAlt || []).join(', ')), 'full')}</div>
   ${st ? `<div class="stat-row"><div class="stat"><span>Disponível</span><b>${st.disp}</b></div><div class="stat"><span>Vendidos</span><b>${st.vend}</b></div><div class="stat"><span>Custo médio</span><b>${brl(st.cc ? st.sc / st.cc : null)}</b></div><div class="stat"><span>Margem média</span><b>${pct(st.cm ? st.sm / st.cm : null)}</b></div></div>` : ''}`;
   const esquerda = id ? (st.n ? `<span class="hint left">Tem ${st.n} unidades no histórico, por isso não pode ser excluído</span>` : `<button class="btn btn-sm btn-danger left" data-action="excluirProduto" data-id="${id}">Excluir produto</button>`) : '';
@@ -2243,7 +2251,8 @@ function modalProduto(id = null) {
     onConfirm: () => {
       const nome = val('pr-nome');
       if (!nome) return erro('Informe o nome do produto.');
-      const dados = { nome, sku: num(val('pr-sku')), fabricante: val('pr-fab') || null, tipos: $$('.pr-tipo:checked').map(x => x.value), ncm: val('pr-ncm'), ean: val('pr-ean'), eanAlt: val('pr-eanalt').split(/[,;\s]+/).filter(Boolean) };
+      const dados = { nome, sku: num(val('pr-sku')), fabricante: val('pr-fab') || null, tipos: $$('.pr-tipo:checked').map(x => x.value), ncm: val('pr-ncm'), ean: val('pr-ean'), eanAlt: val('pr-eanalt').split(/[,;\s]+/).filter(Boolean), precoFisica: val('pr-pvf').trim() ? parseNum(val('pr-pvf')) : null };
+      if (Number.isNaN(dados.precoFisica)) return erro('Confira o V. Venda Física.');
       adicionarNaLista('fabricantes', dados.fabricante);
       if (id) Object.assign(p, dados);
       else DB.produtos.push({ id: uid(), ...dados });
@@ -2288,7 +2297,8 @@ function preencherLinhaFisica(tr) {
   const preco = tr.querySelector('.vf-preco');
   if (!p || preco.value) return;
   const u = unidadesDisponiveis(p.id)[0];
-  if (u) preco.value = fmtIn(u.venda);
+  if (p.precoFisica != null) preco.value = fmtIn(p.precoFisica);       // V. Venda Física do produto
+  else if (u) preco.value = fmtIn(u.venda);
 }
 function modalFisicaNova() {
   const corpo = `<div class="form-grid">
@@ -2873,7 +2883,7 @@ function mostrarLogin(msg = '') {
   let el = $('#login-root');
   if (!el) { el = document.createElement('div'); el.id = 'login-root'; document.body.appendChild(el); }
   el.innerHTML = `<div class="login-tela"><form class="login-card" id="form-login" autocomplete="on">
-    <h1>Bela Ordem</h1><p>Entre para acessar a plataforma.</p>
+    <img class="login-logo" src="assets/logo-horizontal.png" alt="Bela Ordem"><p style="text-align:center">Entre para acessar a plataforma.</p>
     <div class="f"><label for="lg-email">E-mail</label><input id="lg-email" type="email" autocomplete="username" required value="${esc(sessao()?.email || '')}"></div>
     <div class="f"><label for="lg-senha">Senha</label><input id="lg-senha" type="password" autocomplete="current-password" required></div>
     <button class="btn btn-dark" type="submit">Entrar</button>
