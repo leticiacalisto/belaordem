@@ -342,8 +342,49 @@ async function pendenciasMl() {
   return { perguntas, reclamacoes, erros };
 }
 
+// Rotina do agendador (GitHub Actions, de 30 em 30 minutos): mantém pedidos, fretes, envios e anúncios em dia com o site fechado.
+// Só lê o ML e grava o cache; não tem nenhuma ação destrutiva, e tem limite de uma rodada a cada 20 minutos.
+async function agendado() {
+  const { data } = await db.from("bo_kv").select("valor").eq("chave", "ultimo_agendado").maybeSingle();
+  if (data?.valor && Date.now() - Date.parse(data.valor) < 20 * 60_000) return { pulou: "rodou há menos de 20 minutos" };
+  await db.from("bo_kv").upsert({ chave: "ultimo_agendado", valor: new Date().toISOString() });
+  const out: Record<string, unknown> = {};
+  const passo = async (nome: string, f: () => Promise<unknown>) => { try { out[nome] = await f(); } catch (e) { out[`${nome}_erro`] = String((e as Error).message ?? e).slice(0, 160); } };
+  await passo("pedidos", () => sync(new Date(Date.now() - 3 * 86_400_000).toISOString(), new Date().toISOString()));
+  await passo("fretes", async () => { let r = { feitos: 0, restantes: 0 }; for (let k = 0; k < 3; k++) { r = await fretes(60); if (!r.restantes || !r.feitos) break; } return r; });
+  await passo("envios", () => envios(80));
+  await passo("anuncios", async () => {
+    const { data: u } = await db.from("ml_anuncios").select("atualizado").order("atualizado", { ascending: false }).limit(1);
+    if (u?.[0]?.atualizado && Date.now() - Date.parse(u[0].atualizado) < 3 * 3_600_000) return "em dia";
+    return await anuncios();
+  });
+  await passo("avisos", async () => {
+    const p = await pendenciasMl();
+    const { data: ant } = await db.from("bo_kv").select("valor").eq("chave", "ultimo_pend").maybeSingle();
+    const a = ant?.valor ? JSON.parse(ant.valor) : { perguntas: 0, reclamacoes: 0 };
+    const avisos: string[] = [];
+    if ((p.reclamacoes ?? 0) > (a.reclamacoes ?? 0)) avisos.push(`${p.reclamacoes} reclamação(ões) aberta(s) no Mercado Livre`);
+    if ((p.perguntas ?? 0) > (a.perguntas ?? 0)) avisos.push(`${p.perguntas} pergunta(s) sem resposta no Mercado Livre`);
+    await db.from("bo_kv").upsert({ chave: "ultimo_pend", valor: JSON.stringify({ perguntas: p.perguntas ?? 0, reclamacoes: p.reclamacoes ?? 0 }) });
+    if (avisos.length) {
+      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/bo-lembrete`, {
+        method: "POST", headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "content-type": "application/json" },
+        body: JSON.stringify({ action: "aviso", titulo: "Mercado Livre", corpo: avisos.join(" · ") }),
+      });
+    }
+    return { perguntas: p.perguntas, reclamacoes: p.reclamacoes, avisados: avisos.length };
+  });
+  return out;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
+  if (req.method === "POST") {
+    const peek = await req.clone().json().catch(() => ({}));
+    if (peek?.action === "agendado") {
+      try { return json(await agendado()); } catch (e) { return json({ error: String((e as Error).message ?? e) }, 500); }
+    }
+  }
   if (!(await autenticar(req))) return json({ error: "não autorizado" }, 401);
   try {
     const body = req.method === "POST" ? await req.json().catch(() => ({})) : {};

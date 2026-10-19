@@ -203,6 +203,12 @@ tbody tr:hover td{background:#fcfbff}
 .ghost-ic:hover{background:#f1f1f5;color:var(--text)}
 tr.total td{font-weight:500;background:#fbfbfd;border-top:1px solid var(--line);position:sticky;bottom:0}
 tr.clic{cursor:pointer}
+.fazer-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px;align-items:start}
+@media(max-width:900px){.fazer-grid{grid-template-columns:1fr}}
+.env-item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line-2);font-size:13.5px}
+.env-item:last-child{border-bottom:0}
+.rep-lista{max-height:330px;overflow:auto}
+.rep-lista li{align-items:center}
 td.sync-ml{color:#0f766e;background:#f1faf4}
 input.sync-ok{background:#e8f7ee;border-color:#bfe6cc}
 .sync-leg{display:inline-block;padding:1px 9px;border-radius:6px;font-size:12px}
@@ -407,6 +413,7 @@ const sum = (arr, f) => arr.reduce((s, x) => s + (Number(f(x)) || 0), 0);
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
 const ICON = {
+  cash: '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6.5 9.5v5M17.5 9.5v5"/>',
   sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
   wallet: '<path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2z"/><circle cx="16.5" cy="14.5" r="1"/>',
   pie: '<path d="M12 3v9h9"/><path d="M21 12A9 9 0 1 1 12 3"/>',
@@ -657,6 +664,8 @@ const UI = {
   mkt: { mes: '' },
   dre: { ano: hojeISO().slice(0, 4) },
   fin: { periodo: hojeISO().slice(0, 7) },
+  envios: { tab: 'hoje' },
+  repor: { mostrar: false },
   fluxo: { ano: hojeISO().slice(0, 4), tab: 'mensal', periodo: hojeISO().slice(0, 7) },
   rent: { periodo: 'ano:' + hojeISO().slice(0, 4), q: '', ordem: 'lucro', dir: 'desc', soNeg: false },
   despesas: { periodo: hojeISO().slice(0, 7) },
@@ -739,6 +748,32 @@ function renderNav() {
 /* =========================================================
    Início
    ========================================================= */
+/* o que repor: produtos com até 10 unidades (e que vendem ou ainda têm estoque), menos os que você mandou ignorar */
+function listaRepor({ ignorados = false } = {}) {
+  const st = statsProdutos(), h = hojeISO(), d30 = addDias(h, -30), d90 = addDias(h, -90), ign = new Set(DB.config.reporIgnorar || []), v30 = {}, v90 = {};
+  for (const u of DB.estoque) {
+    if (u.status !== 'vendido' || !u.dVenda) continue;
+    if (u.dVenda >= d90) v90[u.produto] = (v90[u.produto] || 0) + 1;
+    if (u.dVenda >= d30) v30[u.produto] = (v30[u.produto] || 0) + 1;
+  }
+  return DB.produtos.filter(p => st[p.id] && st[p.id].disp <= 10 && (st[p.id].disp > 0 || v90[p.id]) && (ignorados ? ign.has(p.id) : !ign.has(p.id)))
+    .map(p => ({ id: p.id, n30: v30[p.id] || 0, disp: st[p.id].disp })).sort((a, b) => b.n30 - a.n30 || a.disp - b.disp);
+}
+/* pedidos do ML que ainda não saíram, separados por prazo de despacho (hoje com atrasados, amanhã) */
+function proximosEnvios() {
+  const hoje = hojeISO(), amanha = addDias(hoje, 1), r = { hoje: [], amanha: [], depois: 0 };
+  for (const o of ML.pedidos || []) {
+    if (!envioAberto(o)) continue;
+    const it = o.items?.[0]; if (!it) continue;
+    const lim = o.envio_limite ? Date.parse(o.envio_limite) : null, dia = lim ? dataBR(o.envio_limite) : hoje;
+    const x = { o, it, q: qtdLiquida(o, it), lim, hora: lim ? new Date(lim - 3 * 3600e3).toISOString().slice(11, 16) : null, atrasado: !!lim && lim < Date.now() };
+    if (dia <= hoje) r.hoje.push(x); else if (dia === amanha) r.amanha.push(x); else r.depois++;
+  }
+  const ord = (a, b) => (a.lim ?? 9e15) - (b.lim ?? 9e15);
+  r.hoje.sort(ord); r.amanha.sort(ord);
+  return r;
+}
+const horaCurta = h => h ? h.replace(/^0/, '').replace(':00', 'h').replace(':', 'h') : '';
 function vInicio() {
   const h = hojeISO(), mes = h.slice(0, 7), agora = new Date(), hr = agora.getHours();
   const saud = hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite';
@@ -776,10 +811,15 @@ function vInicio() {
   const d30 = addDias(h, -30);
   const v30 = {};
   vend.forEach(i => { if (i.dVenda >= d30) v30[i.produto] = (v30[i.produto] || 0) + 1; });
-  const repor = Object.entries(v30).filter(([id]) => st[id] && st[id].disp <= 3).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const reporL = listaRepor(), reporIgn = listaRepor({ ignorados: true });
   const encAb = DB.encomendas.filter(e => !['Entregue', 'Cancelada'].includes(e.status));
-  const pends = (ML.pendCache?.length ? ML.pendCache : pendencias()).slice(0, 6);
-  const blocoFazer = `<section class="block"><div class="sec-head"><h2>Para fazer agora</h2><span class="hint">${pends.length ? plural(pends.length, 'item', 'itens') : 'tudo em dia'}</span></div><div class="card" style="padding:6px 18px">${pends.length ? pends.map(x => `<div class="notif-item" style="border:0;border-bottom:1px solid var(--line-2)"><span class="notif-dot ${x.nivel}"></span><div class="tx"><b>${esc(x.titulo)}</b><div class="hint">${esc(x.detalhe)}</div></div><button class="btn btn-sm btn-dark" data-action="notifAcao" data-acao="${esc(x.acao)}">${esc(x.botao)}</button></div>`).join('') : '<p class="empty-note" style="padding:14px 0">Nada pendente por enquanto.</p>'}</div></section>`;
+  const pends = (ML.pendCache?.length ? ML.pendCache : pendencias()).slice(0, 8);
+  const envs = proximosEnvios(), tabE = UI.envios.tab === 'amanha' ? 'amanha' : 'hoje', listaE = envs[tabE];
+  const itemEnvio = x => `<div class="env-item"><div style="min-width:0"><b style="font-weight:500">${x.q}× ${esc((x.it.title || '').slice(0, 52))}</b><div class="hint">${esc(x.o.buyer_nickname || 'Mercado Livre')}</div></div><span class="chip ${x.atrasado ? 'c-red' : x.hora && x.hora < '12:00' ? 'c-orange' : ''}" style="white-space:nowrap">${x.hora ? `${x.atrasado ? 'atrasado · ' : 'até '}${horaCurta(x.hora)}` : 'sem prazo'}</span></div>`;
+  const cardEnvios = `<section class="block"><div class="sec-head"><h2>Produtos para enviar</h2><button class="btn-link" data-action="notifAcao" data-acao="estoque:separado">Ver separados →</button></div><div class="card" style="padding:6px 18px 10px">${tabs('envios.tab', tabE, [['hoje', 'Hoje', envs.hoje.length], ['amanha', 'Amanhã', envs.amanha.length]])}
+    ${!ML.pedidos ? '<p class="empty-note" style="padding:14px 0">Carregando os pedidos do Mercado Livre...</p>' : listaE.length ? listaE.map(itemEnvio).join('') : `<p class="empty-note" style="padding:14px 0">${tabE === 'hoje' ? 'Nada para enviar hoje.' : 'Nada com prazo para amanhã.'}</p>`}
+    ${envs.depois ? `<p class="hint" style="margin:6px 0 0">${plural(envs.depois, 'pedido com prazo mais adiante', 'pedidos com prazo mais adiante')}</p>` : ''}</div></section>`;
+  const blocoFazer = `<div class="fazer-grid"><section class="block"><div class="sec-head"><h2>Para fazer agora</h2><span class="hint">${pends.length ? plural(pends.length, 'item', 'itens') : 'tudo em dia'}</span></div><div class="card" style="padding:6px 18px">${pends.length ? pends.map(x => `<div class="notif-item" style="border:0;border-bottom:1px solid var(--line-2)"><span class="notif-dot ${x.nivel}"></span><div class="tx"><b>${esc(x.titulo)}</b><div class="hint">${esc(x.detalhe)}</div></div><button class="btn btn-sm btn-dark" data-action="notifAcao" data-acao="${esc(x.acao)}">${esc(x.botao)}</button></div>`).join('') : '<p class="empty-note" style="padding:14px 0">Nada pendente por enquanto.</p>'}</div></section>${cardEnvios}</div>`;
 
   const dataLonga = `${DIAS[agora.getDay()]}, ${agora.getDate()} De ${MESES[agora.getMonth()]} De ${agora.getFullYear()}`;
   return `<div class="page">
@@ -825,8 +865,9 @@ function vInicio() {
         ${vencL.length ? `<ul class="mini-list">${vencL.map(x => `<li><span class="ml-name" title="${esc(P[x.p]?.nome)}">${esc(P[x.p]?.nome || '—')} <span class="faint">· ${x.n} un.</span></span>${chipValidade(x.v)}</li>`).join('')}</ul>` : '<p class="empty-note">Nada vencendo nos próximos 4 meses</p>'}
       </div>
       <div class="card side-card">
-        <div class="side-head"><h2>Repor estoque</h2></div>
-        ${repor.length ? `<ul class="mini-list">${repor.map(([id, n]) => `<li><span class="ml-name">${esc(P[id]?.nome || '—')}</span><span class="faint" style="white-space:nowrap">${n} vend. 30d · <b style="color:${st[id].disp ? 'var(--text)' : 'var(--red)'}">${st[id].disp} disp.</b></span></li>`).join('')}</ul>` : '<p class="empty-note">Nenhum produto com estoque baixo</p>'}
+        <div class="side-head"><h2>Repor estoque</h2><span class="hint">até 10 unidades</span></div>
+        ${reporL.length ? `<ul class="mini-list rep-lista">${reporL.map(x => `<li><span class="ml-name" title="${esc(P[x.id]?.nome)}">${esc(P[x.id]?.nome || '—')}</span><span class="faint" style="white-space:nowrap">${x.n30 ? `${x.n30} vend. 30d · ` : ''}<b style="color:${x.disp ? 'var(--text)' : 'var(--red)'}">${x.disp} disp.</b></span><button class="ghost-ic" data-action="reporIgnorar" data-id="${x.id}" title="Não repor este produto" aria-label="Ignorar ${esc(P[x.id]?.nome)}">${ic('x', 14)}</button></li>`).join('')}</ul>` : '<p class="empty-note">Nada para repor</p>'}
+        ${reporIgn.length ? `<p class="hint" style="margin:8px 0 0"><button class="btn-link" data-action="reporMostrar">${UI.repor.mostrar ? 'Esconder' : 'Ver'} ignorados (${reporIgn.length})</button></p>${UI.repor.mostrar ? `<ul class="mini-list">${reporIgn.map(x => `<li><span class="ml-name faint">${esc(P[x.id]?.nome || '—')}</span><button class="btn btn-sm btn-soft" data-action="reporRestaurar" data-id="${x.id}">Voltar</button></li>`).join('')}</ul>` : ''}` : ''}
       </div>
       <div class="card side-card">
         <div class="side-head"><h2>Encomendas</h2><button class="btn-link" data-action="go" data-view="encomendas">Ver todas →</button></div>
@@ -1409,20 +1450,8 @@ function vConfig() {
       </div>
       ${armazenamentoOk ? '' : '<p class="neg" style="margin-top:14px">Este navegador está bloqueando o armazenamento local. As alterações serão perdidas ao fechar a página, a menos que você baixe um backup.</p>'}
     </div>
-    <div class="card side-card">
-      <div class="side-head"><h2>Preferências</h2></div>
-      <div class="form-grid">
-        <div class="f"><label for="cfg-taxa">Taxa ML padrão (%)</label><input id="cfg-taxa" inputmode="decimal" value="${fmtIn(c.taxaPadrao * 100)}"></div>
-      </div>
-      <div class="form-grid">
-        <div class="f"><label for="cfg-forn">Fornecedores</label><textarea id="cfg-forn" rows="6">${esc(c.fornecedores.join('\n'))}</textarea><span class="hint">Um por linha</span></div>
-        <div class="f"><label for="cfg-tipos">Categorias</label><textarea id="cfg-tipos" rows="6">${esc(c.tipos.join('\n'))}</textarea><span class="hint">Um por linha</span></div>
-      </div>
-      <div class="form-grid"><div class="f full"><label for="cfg-fab">Fabricantes</label><textarea id="cfg-fab" rows="6">${esc(c.fabricantes.join('\n'))}</textarea><span class="hint">Um por linha</span></div></div>
-      <button class="btn btn-dark" data-action="salvarPrefs">Salvar preferências</button>
-    </div>
-    ${cardML()}
     ${cardLembrete()}
+    ${cardML()}
   </div></div>`;
 }
 
@@ -1456,16 +1485,12 @@ function cardML() {
       ${ped.slice(0, 15).map(o => `<tr><td>${fdata(o.date_created.slice(0, 10))}</td><td>${esc(o.status || '')}</td><td>${esc((o.items || []).map(i => `${i.qty}× ${i.title}`).join(', '))}</td><td class="num">${brl(o.total_amount)}</td><td class="num">${brl(o.sale_fee)}</td><td class="num">${o.frete_em ? brl(o.frete_vendedor) : '—'}</td></tr>`).join('')}
       </tbody></table></div><p class="hint" style="margin-top:6px">${plural(ped.length, 'pedido', 'pedidos')} guardados. Mostrando os 15 mais recentes. Isso não altera seu estoque nem suas vendas.</p>` : '<p class="hint" style="margin-top:12px">Nenhum pedido guardado ainda. Clique em "Sincronizar vendas".</p>') : '';
     corpo = `<div class="stat" style="margin-bottom:12px"><span>Situação</span><b>${estado}</b></div>
-      <div class="cfg-actions">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <button class="btn" data-action="mlConectar">${s?.connected ? 'Reconectar' : 'Conectar Mercado Livre'}</button>
-        <button class="btn btn-dark" data-action="mlSincronizar" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>${ML.ocupado ? (ML.progresso || 'Sincronizando...') : 'Sincronizar vendas (60 dias)'}</button>
+        <button class="btn btn-dark" data-action="mlSincronizar" ${ML.ocupado || !s?.connected ? 'disabled' : ''} title="Puxa as vendas dos últimos 60 dias com os fretes e já confere com o seu estoque">${ML.ocupado ? (ML.progresso || 'Sincronizando...') : 'Sincronizar vendas (60 dias)'}</button>
         <button class="btn" data-action="mlHistorico" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Puxar histórico completo</button>
-        <button class="btn" data-action="mlFretes" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Buscar fretes do ML</button>
-        <button class="btn" data-action="mlAdsTeste" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Testar anúncios patrocinados</button>
-        <button class="btn" data-action="mlReclamacoes" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Buscar reclamações e devoluções</button>
-        <button class="btn" data-action="mlAplicarFretes" ${ML.pedidos?.some(o => o.frete_vendedor != null) ? '' : 'disabled'}>Aplicar fretes nas vendas</button>
-        <button class="btn" data-action="mlConferir" ${ML.pedidos?.length ? '' : 'disabled'}>Conferir com meu estoque</button>
-      </div>${ML.autoMsg ? `<p class="hint" style="margin:8px 0 0">${esc(ML.autoMsg)}</p>` : ''}${ML.adsMsg ? `<p class="hint" style="margin:4px 0 0">${esc(ML.adsMsg)}</p>` : ''}${mlDivergencias()}${tabela}`;
+      </div>
+      <p class="hint" style="margin:8px 0 0">Anúncios, fretes, envios, reclamações e perguntas atualizam sozinhos (ao abrir o site, a cada poucos minutos e pelo agendador no servidor).</p>${ML.autoMsg ? `<p class="hint" style="margin:8px 0 0">${esc(ML.autoMsg)}</p>` : ''}${ML.adsMsg ? `<p class="hint" style="margin:4px 0 0">${esc(ML.adsMsg)}</p>` : ''}${mlDivergencias()}${tabela}`;
   }
   return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Mercado Livre</h2></div>${corpo}</div>`;
 }
@@ -1478,8 +1503,8 @@ function cardLembrete() {
   const perm = suporte ? Notification.permission : null;
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.matchMedia('(display-mode: standalone)').matches;
   const estado = !suporte ? 'Este navegador não recebe notificações' : perm === 'granted' ? 'Ativadas neste aparelho' : perm === 'denied' ? 'Bloqueadas no navegador' : 'Ainda não ativadas';
-  return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Lembrete semanal de conferência</h2></div>
-    <p class="hint" style="margin:0 0 12px">Todo sábado de manhã você recebe um e-mail e uma notificação para conferir o estoque. Ative as notificações em cada aparelho (computador e celular).</p>
+  return `<div class="card side-card"><div class="side-head"><h2>Notificações</h2></div>
+    <p class="hint" style="margin:0 0 12px">Todo dia às 11h: quantos produtos enviar hoje e até que horas. Todo sábado de manhã: a conferência do estoque. Também avisa quando chegar reclamação ou pergunta no ML. Ative em cada aparelho (computador e celular).</p>
     <div class="stat" style="margin-bottom:12px"><span>Notificações neste aparelho</span><b>${estado}</b></div>
     <div class="cfg-actions"><button class="btn btn-dark" data-action="lembreteAtivar" ${suporte ? '' : 'disabled'}>Ativar notificações neste aparelho</button>
       <button class="btn" data-action="lembreteTeste">Enviar teste (e-mail + notificação)</button></div>
@@ -1596,7 +1621,7 @@ function cardAnuncios() {
     : `<div class="table-wrap livre" style="margin-top:14px;max-height:520px;overflow:auto"><table><thead><tr><th>Anúncio</th><th>Produto</th><th>Situação</th><th class="num">Preço ML</th><th class="num">Taxa</th><th class="num">Custo</th><th class="num">Margem est.</th><th class="num">Estoque ML</th><th class="num">Estoque site</th><th></th></tr></thead><tbody>
       ${linhas.length ? linhas.map(l => { const a = l.a, mexe = a.status === 'active' || a.status === 'paused', ativo = a.status === 'active';
         return `<tr class="clic" data-action="mlAbrirAnuncio" data-item="${esc(a.item_id)}"><td>${esc((a.titulo || '').slice(0, 54))}</td><td>${l.p ? esc(l.p.nome.slice(0, 28)) : '<span class="chip c-orange">sem vínculo</span>'}</td><td>${chipSt(a.status)}</td><td class="num">${brl(a.preco)}</td><td class="num">${a.taxa_pct != null ? pct(a.taxa_pct) : '—'}</td><td class="num">${l.mg ? brl(l.mg.custo) : '—'}</td><td class="num ${l.mg && l.mg.lucro < 0 ? 'neg' : ''}" title="${l.mg ? 'Lucro estimado por unidade: ' + brl(l.mg.lucro) : ''}">${l.mg ? pct(l.mg.margem) : '—'}</td><td class="num">${a.qtd ?? '—'}</td><td class="num ${diverge(l) ? 'neg' : ''}" title="${l.c && l.c.n > 1 ? 'Dividido entre ' + l.c.n + ' anúncios ativos do mesmo produto' : ''}">${l.c ? (l.c.n > 1 && ativo ? `${l.c.cota} <span class="hint">de ${l.site}</span>` : l.site) : '—'}</td>
-        <td style="white-space:nowrap">${mexe ? `<button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}" title="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" aria-label="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" ${off}>${ic(ativo ? 'pause' : 'play', 18)}</button> ` : ''}${l.p && mexe ? `<button class="btn btn-sm" data-action="mlEnviarUm" data-item="${esc(a.item_id)}" ${off}>Enviar estoque</button> <button class="btn btn-sm" data-action="mlEnviarValor" data-item="${esc(a.item_id)}" ${off}>Enviar valor</button>` : ''}</td></tr>`; }).join('') : vazioLinha(10, 'Nenhum anúncio neste filtro.')}
+        <td style="white-space:nowrap">${mexe ? `<button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}" title="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" aria-label="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" ${off}>${ic(ativo ? 'pause' : 'play', 18)}</button> ` : ''}${l.p && mexe ? `<button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlEnviarUm" data-item="${esc(a.item_id)}" title="Enviar estoque ao ML" aria-label="Enviar estoque ao ML" ${off}>${ic('box', 18)}</button> <button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlEnviarValor" data-item="${esc(a.item_id)}" title="Enviar valor de venda ao ML" aria-label="Enviar valor de venda ao ML" ${off}>${ic('cash', 18)}</button>` : ''}</td></tr>`; }).join('') : vazioLinha(10, 'Nenhum anúncio neste filtro.')}
       </tbody></table></div><p class="hint" style="margin-top:6px">${plural(cont.ativos, 'anúncio ativo', 'anúncios ativos')} e ${cont.pausados} pausado(s). Clique numa linha para ver os detalhes. Preço, taxa e frete dos ativos vêm do ML e atualizam as unidades à venda sozinhos. Estoque, valor e ativar/pausar só mudam no ML quando você confirma. Produto com vários anúncios ativos tem o estoque dividido entre eles.</p>`;
   return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Anúncios do ML e estoque</h2></div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -1952,7 +1977,7 @@ function pendencias() {
   if (semCusto.length) add('media', `${semCusto.length} unidade(s) sem custo`, 'O lucro dessas vendas está inflado. Corrija o custo em Estoque.', 'go:estoque', 'Ver');
   const h = hojeISO(), st = statsProdutos(), d30 = addDias(h, -30), v30 = {};
   DB.estoque.forEach(u => { if (u.status === 'vendido' && u.dVenda >= d30) v30[u.produto] = (v30[u.produto] || 0) + 1; });
-  const repor = Object.entries(v30).filter(([id]) => st[id] && st[id].disp <= 3).sort((a, b) => b[1] - a[1]);
+  const repor = listaRepor().filter(x => x.n30 > 0).map(x => [x.id, x.n30]);
   if (repor.length) { const P = mapaProdutos(); add('media', `${repor.length} produto(s) para repor`, repor.slice(0, 3).map(([id, n]) => `${(P[id]?.nome || '').slice(0, 28)} (${n} vend./30d, ${st[id].disp} em estoque)`).join('; ') + '.', 'go:produtos', 'Ver'); }
   const vencem = DB.estoque.filter(u => u.status === 'avenda' && u.validade && u.validade <= addDias(h, 60));
   if (vencem.length) add('alta', `${vencem.length} unidade(s) vencem em até 60 dias`, 'Confira em Estoque, ordenando por validade.', 'go:estoque', 'Ver');
@@ -2129,6 +2154,32 @@ const ehMarketing = c => c.subtipo === 'PADS' || c.marketplace === 'ESHOP' || /p
 // o lucro do site já desconta a tarifa de venda e o frete de cada pedido; o resto da fatura do ML não está nele
 const jaNoLucro = c => c.subtipo === 'CVVML' || (c.marketplace === 'SHIPPING' && c.subtipo !== 'CDSDB');
 const esperar = ms => new Promise(r => setTimeout(r, ms));
+/* publicidade e cobranças do ML: atualiza sozinho (no máximo de 6 em 6 horas), sem precisar clicar */
+async function mktAuto() {
+  if (ML.mktAutoRodando) return;
+  let ult = 0; try { ult = +localStorage.getItem('bo_mkt_auto') || 0; } catch (_) { /* sem cache */ }
+  if (Date.now() - ult < 6 * 36e5) return;
+  ML.mktAutoRodando = true;
+  try {
+    await mktCarregar();
+    const dias = (ML.mkt?.ads || []).map(a => a.dia).sort(), ultDia = dias[dias.length - 1];
+    await mlChamar('ads_sync', { desde: ultDia ? addDias(ultDia, -3) : '2025-11-01', ate: hojeISO() });
+    let { periodos } = await mlChamar('cobranca_periodos');
+    if (ML.mkt?.cobrancas?.length) periodos = periodos.slice(0, 2);
+    for (const per of periodos) {
+      let off = 0;
+      for (;;) {
+        const r = await mlChamar('cobrancas', { key: per.key, offset: off, paginas: 4 });
+        if (r.espera) { await esperar(5000); off = r.proximo; continue; }
+        if (r.proximo == null) break;
+        off = r.proximo;
+      }
+    }
+    await mktCarregar();
+    try { localStorage.setItem('bo_mkt_auto', String(Date.now())); } catch (_) { /* sem cache */ }
+  } catch (_) { /* tenta de novo na próxima abertura */ }
+  ML.mktAutoRodando = false;
+}
 async function mktCarregar() {
   try { ML.mkt = await mlChamar('marketing'); ML.mktErro = ''; }
   catch (e) { ML.mkt = { ads: [], cobrancas: [] }; ML.mktErro = e.message; }
@@ -2195,29 +2246,29 @@ function vMarketing() {
    (últimos 14 dias, anúncio com um único produto possível) e devolve ao estoque o que o ML cancelou.
    O que for duvidoso (sem estoque, sem vínculo, provável) fica para você revisar em "Conferir com meu estoque". */
 const AUTO_DIAS = 14;
-async function mlAuto() {
-  if (ML.autoRodou || !sessao() || !DB?.produtos?.length || nuvemBloqueada) return;
+async function mlAuto(opc = {}) {
+  if ((ML.autoRodou && !opc.forcar) || !sessao() || !DB?.produtos?.length || nuvemBloqueada) return;
   ML.autoRodou = true;
   try {
     ML.status = await mlChamar('status');
     if (!ML.status.connected) return;
     ML.autoMsg = 'Sincronizando com o Mercado Livre...'; if (UI.view === 'config') render();
-    await mlChamar('sync', { days: 10 });
+    await mlChamar('sync', { days: opc.dias || 10 });
     for (let k = 0; k < 6; k++) { const r = await mlChamar('fretes', { limite: 60 }); if (!r.restantes || !r.feitos) break; }
     try { await mlChamar('envios', { limite: 40 }); } catch (_) { /* função ainda sem a ação */ }
     ML.pedidos = await mlListarTudo();
     let ra = { mudou: 0 }; try { await mlCarregarAnuncios(); ra = aplicarAnuncios(); } catch (_) { /* função ainda sem a ação */ }
-    const desde = new Date(Date.now() - AUTO_DIAS * 864e5).toISOString().slice(0, 10);
+    const desde = new Date(Date.now() - (opc.janela || AUTO_DIAS) * 864e5).toISOString().slice(0, 10);
     const linhas = mlAnalisar().filter(l => l.data >= desde);
     const seguras = linhas.filter(l => ['dup', 'nova', 'bonif'].includes(l.estado) && candidatosMl(l.it).length === 1);
     const r = seguras.length ? aplicarLinhasML(seguras) : { novas: 0, vinc: 0, novas_boni: 0 };
     // fretes reais nas unidades ligadas que ainda estão sem frete
     const por = {}; DB.estoque.forEach(u => { if (u.mlPedido) (por[u.mlPedido] = por[u.mlPedido] || []).push(u); });
-    let fretes = 0;
+    let fretes = 0; const d75 = new Date(Date.now() - 75 * 864e5).toISOString();
     for (const o of ML.pedidos) {
       const us = por[o.id]; if (!us || o.frete_vendedor == null) continue;
       const f = Math.round(Number(o.frete_vendedor) / us.length * 100) / 100;
-      for (const u of us) if (u.frete == null) { u.frete = f; fretes++; }
+      for (const u of us) if (u.frete == null || (Math.abs(u.frete - f) > 0.01 && o.date_created > d75)) { u.frete = f; fretes++; }
     }
     // pedidos cancelados nos últimos 30 dias: a unidade volta ao estoque
     const desde30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
@@ -2236,7 +2287,7 @@ async function mlAuto() {
     if (ra.mudou) partes.push(`${plural(ra.mudou, 'preço/taxa atualizado do ML', 'preços/taxas atualizados do ML')}`);
     if (devol) partes.push(`${plural(devol, 'devolução', 'devoluções')}`);
     ML.autoMsg = partes.length || revisar ? `Última sincronização: ${partes.join(', ') || 'nada novo'}${revisar ? ` · ${plural(revisar, 'pedido', 'pedidos')} para revisar` : ''}` : 'Mercado Livre em dia';
-    iniciarPoll(); recalcPendencias();
+    mktAuto(); iniciarPoll(); recalcPendencias();
     if (partes.length || novosAvisos || semDesde) { commit(); }
     if (partes.length) { toast(`Mercado Livre: ${partes.join(', ')}${revisar ? ` · ${revisar} para revisar` : ''}`); }
     else if (['config', 'estoque', 'produtos', 'hoje'].includes(UI.view)) render();
@@ -2288,6 +2339,41 @@ function abrirModal({ titulo, corpo, rodape, largura = 560, onConfirm, classe = 
     <div class="modal-body">${corpo}</div><div class="modal-foot">${rodape ?? rodapePadrao()}</div></div></div>`;
   const first = $('#modal-root .modal-body input:not([type=radio]):not([type=checkbox]), #modal-root .modal-body select, #modal-root .modal-foot .btn-dark');
   if (first) setTimeout(() => first.focus(), 30);
+  modalHooks();
+}
+/* Fornecedor, fabricante e categoria: se o que você digita ainda não existe, o Enter cria (sem precisar de tela de preferências) */
+function criarAoDigitar(id, chave, rotulo) {
+  const el = $('#' + id); if (!el) return;
+  const dica = document.createElement('div'); dica.className = 'hint'; dica.style.cssText = 'margin-top:4px;min-height:16px'; el.insertAdjacentElement('afterend', dica);
+  const existe = v => (DB.config[chave] || []).some(x => norm(x) === norm(v));
+  el.addEventListener('input', () => { const v = el.value.trim(); dica.innerHTML = v && !existe(v) ? `<span class="chip c-green">Novo</span> "${esc(v)}" ainda não existe. Aperte <b>Enter</b> para criar ${rotulo}.` : ''; });
+  el.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const v = el.value.trim(); if (!v || existe(v)) return;
+    e.preventDefault(); e.stopPropagation();
+    adicionarNaLista(chave, v); salvar();
+    const dl = el.getAttribute('list') && $('#' + el.getAttribute('list')); if (dl) dl.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">`);
+    dica.innerHTML = `<span class="chip c-green">Criado</span> ${esc(v)}`; toast(`${rotulo[0].toUpperCase() + rotulo.slice(1)} criado: ${v}`);
+  });
+}
+function modalHooks() {
+  criarAoDigitar('pr-fab', 'fabricantes', 'o fabricante');
+  criarAoDigitar('ml-forn', 'fornecedores', 'o fornecedor');
+  criarAoDigitar('mc-forn', 'fornecedores', 'o fornecedor');
+  const chips = $('#modal-root .pr-tipo')?.closest('.chips');
+  if (chips && !$('#pr-novatipo')) {
+    chips.insertAdjacentHTML('afterend', '<div class="f" style="margin-top:10px"><input id="pr-novatipo" placeholder="Nova categoria (Enter para criar)" autocomplete="off" style="max-width:320px"></div>');
+    $('#pr-novatipo').addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault(); e.stopPropagation();
+      const v = e.target.value.trim(); if (!v) return;
+      if (!(DB.config.tipos || []).some(x => norm(x) === norm(v))) { adicionarNaLista('tipos', v); salvar(); }
+      const nome = (DB.config.tipos || []).find(x => norm(x) === norm(v)) || v;
+      const ja = $$('.pr-tipo').find(x => x.value === nome);
+      if (ja) ja.checked = true; else chips.insertAdjacentHTML('beforeend', `<label class="check" style="background:#f6f6f9;padding:6px 10px;border-radius:8px"><input type="checkbox" class="pr-tipo" value="${esc(nome)}" checked> ${esc(nome)}</label>`);
+      e.target.value = ''; toast(`Categoria criada: ${nome}`);
+    });
+  }
 }
 function fecharModal() { $('#modal-root').innerHTML = ''; MODAL = null; }
 function confirmar(titulo, msg, onYes, { texto = 'Confirmar', perigo = false } = {}) {
@@ -3411,6 +3497,9 @@ const ACOES = {
   estoqueColunasPadrao: () => { try { const pr = JSON.parse(localStorage.getItem('bo_cols_estoque') || '{}'); delete pr[UI.estoque.tab]; localStorage.setItem('bo_cols_estoque', JSON.stringify(pr)); } catch (_) { /* sem cache */ } fecharModal(); render(); },
   mlSincronizarAgora: () => { const r = aplicarAnuncios(); fecharModal(); commit(r.mudou ? `${plural(r.mudou, 'unidade atualizada', 'unidades atualizadas')} com preço, taxa e frete do ML` : 'Tudo já estava igual ao ML'); },
   mlEnviarValor: el => modalEnviarValorML(el.dataset.item),
+  reporIgnorar: el => { DB.config.reporIgnorar = [...new Set([...(DB.config.reporIgnorar || []), el.dataset.id])]; commit('Produto ignorado na lista de reposição'); },
+  reporRestaurar: el => { DB.config.reporIgnorar = (DB.config.reporIgnorar || []).filter(x => x !== el.dataset.id); commit('Produto voltou para a lista de reposição'); },
+  reporMostrar: () => { UI.repor.mostrar = !UI.repor.mostrar; render(); },
   conferencia: () => modalConferencia(),
   mlVincular: () => modalVincularAnuncios(),
   mlMarcarBonif: () => $$('.ml-inc[data-bonif]').forEach(c => { c.checked = true; }),
@@ -3433,13 +3522,9 @@ const ACOES = {
     ML.ocupado = false; ML.progresso = ''; render();
   },
   mlSincronizar: async () => {
-    ML.ocupado = true; render();
-    try {
-      const { synced } = await mlChamar('sync', { days: 60 });
-      ML.pedidos = await mlListarTudo();
-      toast(`${plural(synced, 'pedido sincronizado', 'pedidos sincronizados')}`);
-    } catch (e) { toast(e.message, true); }
-    ML.ocupado = false; render();
+    ML.ocupado = true; ML.progresso = 'Sincronizando vendas e fretes...'; render();
+    try { await mlAuto({ dias: 60, janela: 60, forcar: true }); } catch (e) { toast(e.message, true); }
+    ML.ocupado = false; ML.progresso = ''; render();
   },
   restaurarNotion: () => confirmar('Restaurar dados do Notion', 'Isso <b>substitui tudo</b> o que está salvo neste navegador pelos dados migrados do Notion. Tudo o que você lançou depois será perdido. Baixe um backup antes se tiver dúvida.', () => { DB = dadosDoNotion(); commit('Dados do Notion restaurados'); }, { texto: 'Substituir tudo', perigo: true }),
   apagarTudo: () => confirmar('Apagar todos os dados', 'Isso apaga produtos, estoque, vendas, despesas e encomendas deste navegador. Não pode ser desfeito sem um backup.', () => { DB = dadosVazios(); commit('Todos os dados foram apagados'); }, { texto: 'Apagar tudo', perigo: true }),

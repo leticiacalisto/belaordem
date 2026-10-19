@@ -1,0 +1,23 @@
+name: Agendador (Mercado Livre)
+on:
+  schedule:
+    - cron: '*/30 * * * *'      # de 30 em 30 minutos: pedidos, fretes, envios, anuncios e avisos
+    - cron: '0 14 * * *'        # todo dia 11h em Brasilia: quantos produtos enviar hoje
+  workflow_dispatch:
+jobs:
+  rotina:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Atualizar o Mercado Livre no servidor
+        if: github.event.schedule != '0 14 * * *'
+        run: |
+          curl -fsS -X POST "https://rjntddpjwqxxwmainogw.supabase.co/functions/v1/ml-sync" \
+            -H "content-type: application/json" -d '{"action":"agendado"}'
+      - name: Aviso das 11h
+        if: github.event.schedule == '0 14 * * *' || github.event_name == 'workflow_dispatch'
+        run: |
+          curl -fsS -X POST "https://rjntddpjwqxxwmainogw.supabase.co/functions/v1/bo-lembrete" \
+            -H "Authorization: Bearer ${ANON}" -H "apikey: ${ANON}" -H "content-type: application/json" \
+            -d '{"action":"envios_dia"}'
+        env:
+          ANON: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqbnRkZHBqd3F4eHdtYWlub2d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5OTI0MjUsImV4cCI6MjEwNDU2ODQyNX0.ukStu7Iby70z6pklAdv0-Gx24_duZ1gIBem7CwYiTP4

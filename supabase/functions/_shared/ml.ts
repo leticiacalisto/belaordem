@@ -133,10 +133,19 @@ export async function freteDe(token: string, shippingId: number) {
   const semEnvio = c.status === 404 && e.status === 404;
   if (!semEnvio && !c.ok && !e.ok) throw new Error(`HTTP ${c.status}/${e.status}`);
   const cj = c.ok ? await c.json() : null, ej = e.ok ? await e.json() : null;
+  // prazo para despachar (só enquanto o envio ainda não saiu)
+  let limite: string | null = ej?.lead_time?.estimated_handling_limit?.date ?? null;
+  if (["pending", "handling", "ready_to_ship"].includes(ej?.status ?? "")) {
+    try {
+      const sl = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}/sla`, { headers: h });
+      if (sl.ok) { const sj = await sl.json(); limite = sj?.expected_date ?? limite; }
+    } catch (_) { /* segue sem prazo */ }
+  }
   return {
     frete_vendedor: cj?.senders?.[0]?.cost ?? null,
     envio_status: ej?.status ?? null,
     envio_sub: ej?.substatus ?? null,
+    envio_limite: limite,
     envio_tipo: ej?.logistic_type ?? ej?.logistic?.type ?? null,
     frete_em: new Date().toISOString(),
   };

@@ -97,3 +97,4 @@ create table if not exists ml_anuncios (
   qtd int, vendidos int, status text, tem_variacoes boolean, atualizado timestamptz default now()
 );
 alter table ml_anuncios enable row level security;
+alter table ml_orders add column if not exists envio_limite timestamptz;
