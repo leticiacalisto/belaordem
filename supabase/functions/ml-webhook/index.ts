@@ -57,6 +57,9 @@ async function processarAnuncio(itemId: string, userIdNotificado: string) {
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("ok");
+  // se o segredo WEBHOOK_KEY existir, só aceita chamadas com ?k=<segredo> na URL cadastrada no app do ML
+  const chave = Deno.env.get("WEBHOOK_KEY");
+  if (chave && new URL(req.url).searchParams.get("k") !== chave) return new Response("ok");
   let b: any = null;
   try { b = await req.json(); } catch { return new Response("ok"); }
   const m = /^\/orders\/(\d+)$/.exec(String(b?.resource ?? ""));

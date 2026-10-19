@@ -98,3 +98,10 @@ create table if not exists ml_anuncios (
 );
 alter table ml_anuncios enable row level security;
 alter table ml_orders add column if not exists envio_limite timestamptz;
+
+-- Segurança: o site só fala com o banco pelas funções (chave de serviço). Anon e authenticated não têm acesso direto.
+revoke all on all tables in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+alter default privileges in schema public revoke all on tables from anon, authenticated;
+alter default privileges in schema public revoke all on sequences from anon, authenticated;
+revoke execute on function bo_cobrancas_resumo() from public, anon, authenticated;

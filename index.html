@@ -3721,17 +3721,27 @@ function mostrarLogin(msg = '') {
     <div class="login-erro" id="lg-erro" role="alert">${esc(msg)}</div></form></div>`;
   setTimeout(() => $('#lg-email')?.focus(), 30);
 }
+/* freio de tentativas de login neste aparelho (5 erros seguidos: espera de 30 s que dobra até 15 min); o limite de verdade fica no servidor */
+function loginBloqueio() { try { const x = JSON.parse(localStorage.getItem('bo_lg') || '{}'); return Math.max(0, Math.ceil(((x.ate || 0) - Date.now()) / 1000)); } catch (_) { return 0; } }
+function loginFalhou() {
+  try {
+    const x = JSON.parse(localStorage.getItem('bo_lg') || '{}'), n = (x.n || 0) + 1;
+    localStorage.setItem('bo_lg', JSON.stringify({ n, ate: n >= 5 ? Date.now() + Math.min(900, 30 * 2 ** (n - 5)) * 1000 : 0 }));
+  } catch (_) { /* sem armazenamento */ }
+}
 document.addEventListener('submit', async e => {
   if (e.target.id !== 'form-login') return;
   e.preventDefault();
   const btn = e.target.querySelector('button'), er = $('#lg-erro');
+  const bl = loginBloqueio();
+  if (bl > 0) { er.textContent = `Muitas tentativas. Tente de novo em ${bl} s.`; return; }
   btn.disabled = true; er.textContent = '';
   try {
     const j = await authFetch('token?grant_type=password', { email: $('#lg-email').value.trim(), password: $('#lg-senha').value });
-    gravarSessao(sessaoDe(j));
+    gravarSessao(sessaoDe(j)); try { localStorage.removeItem('bo_lg'); } catch (_) { /* sem armazenamento */ }
     $('#login-root').innerHTML = '';
     await iniciarApp();
-  } catch (err) { er.textContent = /invalid/i.test(err.message) ? 'E-mail ou senha incorretos.' : err.message; btn.disabled = false; }
+  } catch (err) { loginFalhou(); er.textContent = /invalid/i.test(err.message) ? 'E-mail ou senha incorretos.' : err.message; btn.disabled = false; }
 });
 function sairDaConta() {
   gravarSessao(null);

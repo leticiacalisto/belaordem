@@ -6,7 +6,8 @@ export const db = createClient(
 );
 
 export const cors = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": Deno.env.get("SITE_ORIGIN") ?? "https://leticiacalisto.github.io",
+  "Vary": "Origin",
   "Access-Control-Allow-Headers": "content-type, authorization",
   "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
 };
@@ -48,11 +49,32 @@ async function tokenRequest(params: Record<string, string>) {
   return j;
 }
 
+// ---- Tokens do ML guardados cifrados (AES-GCM). A chave vem do segredo BO_KEY, que não fica no banco.
+// Só cifra ao gravar quando TOKEN_ENC=1 (ligue depois de publicar todas as funções); lê sempre os dois formatos.
+async function chaveToken(): Promise<CryptoKey> {
+  const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("bo-token:" + Deno.env.get("BO_KEY")!));
+  return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
+const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+async function cifrar(txt: string): Promise<string> {
+  if (Deno.env.get("TOKEN_ENC") !== "1") return txt;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await chaveToken(), new TextEncoder().encode(txt)));
+  return `enc:v1:${b64(iv)}:${b64(ct)}`;
+}
+async function decifrar(txt: string): Promise<string> {
+  if (!txt?.startsWith("enc:v1:")) return txt;
+  const [, , iv, ct] = txt.split(":");
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(iv) }, await chaveToken(), unb64(ct));
+  return new TextDecoder().decode(pt);
+}
+
 export async function saveTokens(j: any) {
   const { error } = await db.from("ml_tokens").upsert({
     id: 1,
-    access_token: j.access_token,
-    refresh_token: j.refresh_token,
+    access_token: await cifrar(j.access_token),
+    refresh_token: await cifrar(j.refresh_token),
     ml_user_id: j.user_id,
     expires_at: new Date(Date.now() + j.expires_in * 1000).toISOString(),
     updated_at: new Date().toISOString(),
@@ -68,9 +90,9 @@ export async function getAccess() {
   const { data } = await db.from("ml_tokens").select("*").eq("id", 1).maybeSingle();
   if (!data) throw new Error("Mercado Livre ainda não conectado");
   if (new Date(data.expires_at).getTime() - Date.now() > 60_000) {
-    return { token: data.access_token as string, userId: data.ml_user_id as number };
+    return { token: await decifrar(data.access_token as string), userId: data.ml_user_id as number };
   }
-  const j = await tokenRequest({ grant_type: "refresh_token", refresh_token: data.refresh_token });
+  const j = await tokenRequest({ grant_type: "refresh_token", refresh_token: await decifrar(data.refresh_token) });
   await saveTokens(j);
   return { token: j.access_token as string, userId: j.user_id as number };
 }
