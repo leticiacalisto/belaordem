@@ -158,38 +158,43 @@ async function cobrancas(key: string, offset: number, paginas: number) {
 }
 
 // ---- Reclamações / devoluções do ML (só leitura): guarda as respostas cruas em ml_ads_raw (tipo recl_*) para analisarmos
-async function reclamacoesTeste(pedidos: number[]) {
+async function reclamacoesTeste(_pedidos: number[]) {
   const { token } = await getAccess();
   const passos: Record<string, number> = {};
   const base = "https://api.mercadolibre.com/post-purchase";
+  const esperar = (ms: number) => new Promise((res) => setTimeout(res, ms));
   const reg = async (tipo: string, url: string) => {
-    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    const t = await r.text();
+    let r: Response | null = null, t = "";
+    for (let k = 0; k < 4; k++) {                       // o ML limita a taxa: espera e tenta de novo
+      r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      t = await r.text();
+      if (r.status !== 429) break;
+      await esperar(1200 * (k + 1));
+    }
     let j: any = null;
     try { j = JSON.parse(t); } catch { /* não é JSON */ }
-    await db.from("ml_ads_raw").insert({ tipo, url, status: r.status, corpo: j ?? { texto: t.slice(0, 2000) } });
-    passos[`${tipo} ${r.status}`] = (passos[`${tipo} ${r.status}`] ?? 0) + 1;
-    return { r, j };
+    await db.from("ml_ads_raw").insert({ tipo, url, status: r!.status, corpo: j ?? { texto: t.slice(0, 2000) } });
+    passos[`${tipo} ${r!.status}`] = (passos[`${tipo} ${r!.status}`] ?? 0) + 1;
+    return { r: r!, j };
   };
-  const claims = new Set<number>();
-  let off = 0;
-  for (let p = 0; p < 8; p++) {
-    const { j } = await reg("recl_lista", `${base}/v1/claims/search?limit=50&offset=${off}`);
-    const d: any[] = j?.data ?? [];
-    d.forEach((c) => c?.id && claims.add(Number(c.id)));
-    if (d.length < 50) break;
-    off += 50;
+  const claims = new Map<number, any>();
+  for (const st of ["closed", "opened"]) {
+    for (let off = 0, p = 0; p < 12; p++, off += 50) {
+      const { j } = await reg("recl_lista", `${base}/v1/claims/search?status=${st}&limit=50&offset=${off}`);
+      const d: any[] = j?.data ?? [];
+      d.forEach((c) => c?.id && claims.set(Number(c.id), c));
+      if (d.length < 50) break;
+    }
   }
-  const ids = pedidos.slice(0, 80);
-  for (let i = 0; i < ids.length; i += 5) {
-    await Promise.all(ids.slice(i, i + 5).map(async (id) => {
-      const { j } = await reg("recl_pedido", `${base}/v1/claims/search?resource=order&resource_id=${id}`);
-      (j?.data ?? []).forEach((c: any) => c?.id && claims.add(Number(c.id)));
-    }));
-  }
-  const lista = [...claims].slice(0, 60);
-  for (let i = 0; i < lista.length; i += 5) {
-    await Promise.all(lista.slice(i, i + 5).map((id) => reg("recl_devolucao", `${base}/v2/claims/${id}/returns`)));
+  // significado dos motivos
+  const motivos = new Set<string>();
+  claims.forEach((c) => c.reason_id && motivos.add(String(c.reason_id)));
+  for (const m of motivos) await reg("recl_motivo", `${base}/v1/claims/reasons/${m}`);
+  // devoluções físicas: só onde o ML diz que houve devolução do item
+  const devs = [...claims.values()].filter((c) => (c.resolution?.reason ?? "") === "item_returned").map((c) => Number(c.id));
+  for (const id of devs.slice(0, 60)) {
+    await reg("recl_devolucao", `${base}/v2/claims/${id}/returns`);
+    await esperar(350);
   }
   return { passos, reclamacoes: claims.size };
 }
