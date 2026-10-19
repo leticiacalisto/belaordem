@@ -870,6 +870,12 @@ function vEstoque() {
   const fornecedores = [...new Set(DB.estoque.map(i => i.fornecedor).filter(Boolean))].sort();
   const meses = [...new Set(DB.estoque.filter(i => i.dVenda).map(i => i.dVenda.slice(0, 7)))].sort().reverse();
   const vendidoTab = U.tab === 'vendido' || U.tab === 'separado';
+  const custoVenda = DB.estoque.filter(i => i.status === 'avenda').reduce((t, i) => t + (i.custo || 0), 0);
+  const kpiEstoque = `<div class="card" style="margin-bottom:18px"><div class="kpis">
+    <div class="kpi"><div class="kpi-l">À venda</div><div class="kpi-v">${nA}</div><div class="kpi-s">unidades disponíveis</div></div>
+    <div class="kpi"><div class="kpi-l">Separado</div><div class="kpi-v">${nS}</div><div class="kpi-s">vendidas, ainda não enviadas</div></div>
+    <div class="kpi"><div class="kpi-l">Físico real</div><div class="kpi-v">${nA + nS}</div><div class="kpi-s">à venda + separado</div></div>
+    <div class="kpi"><div class="kpi-l">Valor em estoque</div><div class="kpi-v">${brl(custoVenda)}</div><div class="kpi-s">a custo, só o que está à venda</div></div></div></div>`;
 
   const cQtd = g => `<td><span class="qtd">${g.ids.length}</span></td>`;
   const cSku = i => `<td class="num muted">${P[i.produto]?.sku ?? '—'}</td>`;
@@ -890,7 +896,8 @@ function vEstoque() {
     thead = '<th>Qtd</th><th>Status</th><th class="num">SKU</th><th>Produto</th><th>Fornecedor</th><th class="num">Custo</th><th class="num">V. Venda</th><th>NF</th><th>Compra</th><th>Validade</th><th>Lote</th><th>D. Venda</th><th></th>';
     rows = vis.map((g, k) => { const i = g.it; return `<tr>${cQtd(g)}<td>${chipStatus(i.status)}</td>${cSku(i)}${celulaProduto(i, P)}<td>${chip('fornecedor', i.fornecedor)}</td><td class="num">${brl(i.custo)}</td><td class="num">${brl(i.venda)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td class="muted">${fdata(i.dVenda)}</td><td><div class="row-actions">${bEdit(k)}</div></td></tr>`; });
   }
-  return `<div class="page">${pageHead('Estoque', `Físico real: ${nA + nS} unidades (${nA} à venda + ${nS} separadas: vendidas no ML e ainda não enviadas). Cada linha é uma unidade (ou um lote de unidades iguais)`, `<button class="btn btn-dark" data-action="novaCompra">${ic('plus', 18)} Registrar compra</button>`)}
+  return `<div class="page">${pageHead('Estoque', 'Cada linha é uma unidade (ou um lote de unidades iguais)', `<button class="btn btn-dark" data-action="novaCompra">${ic('plus', 18)} Registrar compra</button>`)}
+  ${kpiEstoque}
   ${tabs('estoque.tab', U.tab, [['avenda', 'À venda', nA], ['separado', 'Separado', nS], ['vendido', 'Vendidos', DB.estoque.length - nA], ['geral', 'Geral', DB.estoque.length]])}
   <div class="toolbar">${campoBusca('est-q', 'estoque.q', U.q, 'Buscar produto, SKU, NF, cliente...')}
     ${select('estoque.fornecedor', U.fornecedor, [['', 'Todos os fornecedores'], ...fornecedores.map(f => [f, f])], 'Fornecedor')}
@@ -1683,7 +1690,7 @@ async function mlAuto() {
     iniciarPoll(); recalcPendencias();
     if (partes.length || novosAvisos || semDesde) { commit(); }
     if (partes.length) { toast(`Mercado Livre: ${partes.join(', ')}${revisar ? ` · ${revisar} para revisar` : ''}`); }
-    else if (UI.view === 'config') render();
+    else if (['config', 'estoque', 'produtos', 'hoje'].includes(UI.view)) render();
   } catch (e) { ML.autoMsg = `Sincronização automática falhou: ${e.message}`; if (UI.view === 'config') render(); }
 }
 
