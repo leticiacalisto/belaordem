@@ -583,7 +583,7 @@ function venderUnidades(us, { venda, taxa, frete, data, vendaFisica }) {
     if (venda != null) u.venda = venda;
     if (vendaFisica) {
       u.vendaFisica = vendaFisica; u.taxa = 0; u.frete = 0;
-      if (venda == null) { const pf = DB.produtos.find(x => x.id === u.produto)?.precoFisica; if (pf != null) u.venda = pf; }   // V. Venda Física do produto
+      if (venda == null && u.precoFisica != null) u.venda = u.precoFisica;   // V. Venda Física da unidade
     }
     else { if (taxa != null) u.taxa = taxa; if (frete != null) u.frete = frete; }
   }
@@ -876,6 +876,7 @@ function vEstoque() {
   const fornecedores = [...new Set(DB.estoque.map(i => i.fornecedor).filter(Boolean))].sort();
   const meses = [...new Set(DB.estoque.filter(i => i.dVenda).map(i => i.dVenda.slice(0, 7)))].sort().reverse();
   const vendidoTab = U.tab === 'vendido' || U.tab === 'separado';
+  const ABAS = [['avenda', 'À venda', nA], ['separado', 'Separado', nS], ['vendido', 'Vendidos', DB.estoque.length - nA], ['geral', 'Geral', DB.estoque.length], ['anuncios', 'Anúncios ML', (ML.anuncios || []).filter(a => a.status === 'active').length]];
   const custoVenda = DB.estoque.filter(i => i.status === 'avenda').reduce((t, i) => t + (i.custo || 0), 0);
   const kpiEstoque = `<div class="card" style="margin-bottom:18px"><div class="kpis">
     <div class="kpi"><div class="kpi-l">À venda</div><div class="kpi-v">${nA}</div><div class="kpi-s">unidades disponíveis</div></div>
@@ -890,21 +891,25 @@ function vEstoque() {
   const canal = i => i.vendaFisica ? chip('pessoa', VF[i.vendaFisica]?.pessoa || 'Venda física') : '<span class="chip c-yellow">Mercado Livre</span>';
   let thead, rows, cols;
   if (U.tab === 'avenda') {
-    cols = 16;
-    thead = '<th>Qtd</th><th class="num">SKU</th><th>Produto</th><th class="num">Custo</th><th class="num">V. Venda</th><th class="num">Taxa ML</th><th class="num">Frete</th><th class="num">Lucro</th><th class="num">Margem</th><th>Validade</th><th>Lote</th><th>Categoria</th><th>Fornecedor</th><th>NF</th><th>Compra</th><th></th>';
-    rows = vis.map((g, k) => { const i = g.it; return `<tr>${cQtd(g)}${cSku(i)}${celulaProduto(i, P)}${cVals(i)}<td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td><div class="chips">${(P[i.produto]?.tipos || []).map(t => chip('tipo', t)).join('')}</div></td><td>${chip('fornecedor', i.fornecedor)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-dark" data-action="venderLote" data-lote="${k}">Vender</button>${bEdit(k)}</div></td></tr>`; });
+    cols = 17;
+    thead = '<th>Qtd</th><th class="num">SKU</th><th>Produto</th><th class="num">Custo</th><th class="num">V. Venda</th><th class="num">Taxa ML</th><th class="num">Frete</th><th class="num">Lucro</th><th class="num">Margem</th><th class="num">V. V. Física</th><th>Validade</th><th>Lote</th><th>Categoria</th><th>Fornecedor</th><th>NF</th><th>Compra</th><th></th>';
+    rows = vis.map((g, k) => { const i = g.it; return `<tr class="clic" data-action="editarLote" data-lote="${k}">${cQtd(g)}${cSku(i)}${celulaProduto(i, P)}${cVals(i)}<td class="num">${i.precoFisica != null ? brl(i.precoFisica) : '—'}</td><td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td><div class="chips">${(P[i.produto]?.tipos || []).map(t => chip('tipo', t)).join('')}</div></td><td>${chip('fornecedor', i.fornecedor)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-dark" data-action="venderLote" data-lote="${k}">Vender</button>${bEdit(k)}</div></td></tr>`; });
   } else if (vendidoTab) {
     cols = 16;
     thead = '<th>Qtd</th><th>D. Venda</th><th class="num">SKU</th><th>Produto</th><th class="num">Custo</th><th class="num">V. Venda</th><th class="num">Taxa ML</th><th class="num">Frete</th><th class="num">Lucro</th><th class="num">Margem</th><th>Canal</th><th>Fornecedor</th><th>NF</th><th>Lote</th><th>Compra</th><th></th>';
-    rows = vis.map((g, k) => { const i = g.it; return `<tr>${cQtd(g)}<td>${fdata(i.dVenda)}</td>${cSku(i)}${celulaProduto(i, P)}${cVals(i)}<td>${canal(i)}</td><td>${chip('fornecedor', i.fornecedor)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${esc(i.lote || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="devolverLote" data-lote="${k}">Devolução</button>${bEdit(k)}</div></td></tr>`; });
+    rows = vis.map((g, k) => { const i = g.it; return `<tr class="clic" data-action="editarLote" data-lote="${k}">${cQtd(g)}<td>${fdata(i.dVenda)}</td>${cSku(i)}${celulaProduto(i, P)}${cVals(i)}<td>${canal(i)}</td><td>${chip('fornecedor', i.fornecedor)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${esc(i.lote || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="devolverLote" data-lote="${k}">Devolução</button>${bEdit(k)}</div></td></tr>`; });
   } else {
     cols = 13;
     thead = '<th>Qtd</th><th>Status</th><th class="num">SKU</th><th>Produto</th><th>Fornecedor</th><th class="num">Custo</th><th class="num">V. Venda</th><th>NF</th><th>Compra</th><th>Validade</th><th>Lote</th><th>D. Venda</th><th></th>';
-    rows = vis.map((g, k) => { const i = g.it; return `<tr>${cQtd(g)}<td>${chipStatus(i.status)}</td>${cSku(i)}${celulaProduto(i, P)}<td>${chip('fornecedor', i.fornecedor)}</td><td class="num">${brl(i.custo)}</td><td class="num">${brl(i.venda)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td class="muted">${fdata(i.dVenda)}</td><td><div class="row-actions">${bEdit(k)}</div></td></tr>`; });
+    rows = vis.map((g, k) => { const i = g.it; return `<tr class="clic" data-action="editarLote" data-lote="${k}">${cQtd(g)}<td>${chipStatus(i.status)}</td>${cSku(i)}${celulaProduto(i, P)}<td>${chip('fornecedor', i.fornecedor)}</td><td class="num">${brl(i.custo)}</td><td class="num">${brl(i.venda)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td class="muted">${fdata(i.dVenda)}</td><td><div class="row-actions">${bEdit(k)}</div></td></tr>`; });
+  }
+  if (U.tab === 'anuncios') {
+    if (!ML.anuncios && ML.status?.connected && !ML.carregandoAn) { ML.carregandoAn = true; mlCarregarAnuncios().then(() => { ML.carregandoAn = false; render(); }).catch(() => { ML.carregandoAn = false; }); }
+    return `<div class="page">${pageHead('Estoque', 'Cada linha é uma unidade (ou um lote de unidades iguais)', `<button class="btn" data-action="conferencia">Conferência de estoque</button> <button class="btn btn-dark" data-action="novaCompra">${ic('plus', 18)} Registrar compra</button>`)}${kpiEstoque}${tabs('estoque.tab', U.tab, ABAS)}${cardAnuncios()}</div>`;
   }
   return `<div class="page">${pageHead('Estoque', 'Cada linha é uma unidade (ou um lote de unidades iguais)', `<button class="btn" data-action="conferencia">Conferência de estoque</button> <button class="btn btn-dark" data-action="novaCompra">${ic('plus', 18)} Registrar compra</button>`)}
   ${kpiEstoque}
-  ${tabs('estoque.tab', U.tab, [['avenda', 'À venda', nA], ['separado', 'Separado', nS], ['vendido', 'Vendidos', DB.estoque.length - nA], ['geral', 'Geral', DB.estoque.length]])}
+  ${tabs('estoque.tab', U.tab, ABAS)}
   <div class="toolbar">${campoBusca('est-q', 'estoque.q', U.q, 'Buscar produto, SKU, NF, cliente...')}
     ${select('estoque.fornecedor', U.fornecedor, [['', 'Todos os fornecedores'], ...fornecedores.map(f => [f, f])], 'Fornecedor')}
     ${vendidoTab ? select('estoque.mes', U.mes, [['', 'Todos os meses'], ...meses.map(m => [m, nomeMes(m)])], 'Mês da venda') : ''}
@@ -1146,7 +1151,6 @@ function vConfig() {
       <button class="btn btn-dark" data-action="salvarPrefs">Salvar preferências</button>
     </div>
     ${cardML()}
-    ${cardAnuncios()}
     ${cardLembrete()}
   </div></div>`;
 }
@@ -2075,6 +2079,7 @@ function modalLote(lote) {
     ${campo('ml-taxa', 'Taxa ML (%)', inputNum('ml-taxa', i.taxa != null ? i.taxa * 100 : null))}
     ${campo('ml-frete', 'Frete', inputNum('ml-frete', i.frete))}
   </div>
+  <div class="form-grid">${campo('ml-pvf', 'V. Venda Física (R$)', inputNum('ml-pvf', i.precoFisica))}<div class="f"><span class="hint" style="margin-top:26px;display:block">Só vale quando a unidade entra numa venda física: substitui o V. Venda.</span></div></div>
   <div class="form-grid">
     ${campo('ml-forn', 'Fornecedor', `<input id="ml-forn" list="dl-forn" value="${esc(i.fornecedor || '')}" autocomplete="off">${datalistLista('dl-forn', DB.config.fornecedores)}`)}
     ${campo('ml-nf', 'NF', inputTxt('ml-nf', i.nf))}
@@ -2092,7 +2097,7 @@ function modalLote(lote) {
     onConfirm: () => {
       const prod = produtoPorLabel(val('ml-prod'));
       if (!prod) return erro('Escolha um produto da lista.');
-      const nums = lerNums({ custo: 'ml-custo', venda: 'ml-venda', taxa: 'ml-taxa', frete: 'ml-frete' });
+      const nums = lerNums({ custo: 'ml-custo', venda: 'ml-venda', taxa: 'ml-taxa', frete: 'ml-frete', pvf: 'ml-pvf' });
       if (!nums) return erro('Confira os valores digitados.');
       const status = val('ml-status');
       const ids = new Set(lote.ids);
@@ -2101,7 +2106,7 @@ function modalLote(lote) {
       for (const u of DB.estoque) {
         if (!ids.has(u.id)) continue;
         Object.assign(u, {
-          produto: prod.id, custo: nums.custo, venda: nums.venda, taxa: nums.taxa == null ? null : nums.taxa / 100, frete: nums.frete,
+          produto: prod.id, custo: nums.custo, precoFisica: nums.pvf, venda: (status === 'vendido' && val('ml-vf') && nums.pvf != null) ? nums.pvf : nums.venda, taxa: nums.taxa == null ? null : nums.taxa / 100, frete: nums.frete,
           status, unid: status === 'vendido' ? 0 : 1,
           dVenda: status === 'vendido' ? (val('ml-dvenda') || hojeISO()) : null,
           vendaFisica: status === 'vendido' ? (val('ml-vf') || null) : null,
@@ -2490,7 +2495,6 @@ function modalProduto(id = null) {
   </div>
   <div class="form-grid"><div class="f full"><span class="lbl">Categorias</span><div class="chips" style="gap:8px">${DB.config.tipos.map(t => `<label class="check" style="background:#f6f6f9;padding:6px 10px;border-radius:8px"><input type="checkbox" class="pr-tipo" value="${esc(t)}" ${(p.tipos || []).includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('')}</div></div></div>
   <div class="form-grid">${campo('pr-ncm', 'NCM', inputTxt('pr-ncm', p.ncm))}${campo('pr-ean', 'EAN', inputTxt('pr-ean', p.ean))}</div>
-  <div class="form-grid">${campo('pr-pvf', 'V. Venda Física (R$)', inputTxt('pr-pvf', fmtIn(p.precoFisica), 'inputmode="decimal" placeholder="Só vale quando a unidade entra numa venda física"'), 'full')}</div>
   <div class="form-grid">${campo('pr-eanalt', 'Outros EANs (separados por vírgula)', inputTxt('pr-eanalt', (p.eanAlt || []).join(', ')), 'full')}</div>
   ${st ? `<div class="stat-row"><div class="stat"><span>Disponível</span><b>${st.disp}</b></div><div class="stat"><span>Separado</span><b>${st.sep}</b></div><div class="stat"><span>Vendidos</span><b>${st.vend}</b></div><div class="stat"><span>Custo médio</span><b>${brl(st.cc ? st.sc / st.cc : null)}</b></div><div class="stat"><span>Margem média</span><b>${pct(st.cm ? st.sm / st.cm : null)}</b></div></div>` : ''}`;
   const esquerda = id ? (st.n ? `<span class="hint left">Tem ${st.n} unidades no histórico, por isso não pode ser excluído</span>` : `<button class="btn btn-sm btn-danger left" data-action="excluirProduto" data-id="${id}">Excluir produto</button>`) : '';
@@ -2499,8 +2503,7 @@ function modalProduto(id = null) {
     onConfirm: () => {
       const nome = val('pr-nome');
       if (!nome) return erro('Informe o nome do produto.');
-      const dados = { nome, sku: num(val('pr-sku')), fabricante: val('pr-fab') || null, tipos: $$('.pr-tipo:checked').map(x => x.value), ncm: val('pr-ncm'), ean: val('pr-ean'), eanAlt: val('pr-eanalt').split(/[,;\s]+/).filter(Boolean), precoFisica: val('pr-pvf').trim() ? parseNum(val('pr-pvf')) : null };
-      if (Number.isNaN(dados.precoFisica)) return erro('Confira o V. Venda Física.');
+      const dados = { nome, sku: num(val('pr-sku')), fabricante: val('pr-fab') || null, tipos: $$('.pr-tipo:checked').map(x => x.value), ncm: val('pr-ncm'), ean: val('pr-ean'), eanAlt: val('pr-eanalt').split(/[,;\s]+/).filter(Boolean) };
       adicionarNaLista('fabricantes', dados.fabricante);
       if (id) Object.assign(p, dados);
       else DB.produtos.push({ id: uid(), ...dados });
@@ -2527,7 +2530,7 @@ function lerLinhasFisica(sel) {
     if (!(qtd >= 1)) return erro(`Item ${k + 1}: quantidade inválida.`) || null;
     const preco = parseNum(tr.querySelector('.vf-preco').value);
     if (Number.isNaN(preco)) return erro(`Item ${k + 1}: confira o preço.`) || null;
-    pedidos.push({ prod, qtd, preco });
+    pedidos.push({ prod, qtd, preco, auto: parseNum(tr.querySelector('.vf-preco').dataset.auto || '') });
   }
   const precisa = {};
   pedidos.forEach(x => { precisa[x.prod.id] = (precisa[x.prod.id] || 0) + x.qtd; });
@@ -2538,15 +2541,14 @@ function lerLinhasFisica(sel) {
   return pedidos;
 }
 function venderLinhasFisica(pedidos, vfId, data) {
-  for (const x of pedidos) venderUnidades(unidadesDisponiveis(x.prod.id).slice(0, x.qtd), { venda: x.preco, data, vendaFisica: vfId });
+  for (const x of pedidos) venderUnidades(unidadesDisponiveis(x.prod.id).slice(0, x.qtd), { venda: (x.auto != null && !Number.isNaN(x.auto) && Math.abs(x.auto - x.preco) < 0.005) ? null : x.preco, data, vendaFisica: vfId });
 }
 function preencherLinhaFisica(tr) {
   const p = produtoPorLabel(tr.querySelector('.vf-prod').value);
   const preco = tr.querySelector('.vf-preco');
   if (!p || preco.value) return;
   const u = unidadesDisponiveis(p.id)[0];
-  if (p.precoFisica != null) preco.value = fmtIn(p.precoFisica);       // V. Venda Física do produto
-  else if (u) preco.value = fmtIn(u.venda);
+  if (u) { preco.value = fmtIn(u.precoFisica != null ? u.precoFisica : u.venda); preco.dataset.auto = preco.value; }   // V. Venda Física da unidade, se houver
 }
 function modalFisicaNova() {
   const corpo = `<div class="form-grid">
