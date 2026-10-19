@@ -203,6 +203,8 @@ tbody tr:hover td{background:#fcfbff}
 .ghost-ic:hover{background:#f1f1f5;color:var(--text)}
 tr.total td{font-weight:500;background:#fbfbfd;border-top:1px solid var(--line);position:sticky;bottom:0}
 tr.clic{cursor:pointer}
+td.sync-ml{color:#0f766e}
+td.sync-ml::after{content:' ↻';font-size:10px;opacity:.7}
 tr.sub td{background:#fcfcfe;font-size:12px}
 td.empty-cell{padding:40px;text-align:center;color:var(--faint);white-space:normal}
 .more{display:flex;justify-content:center;padding:14px}
@@ -465,7 +467,7 @@ function configPadrao() {
   };
 }
 function dadosVazios() {
-  return { versao: 1, produtos: [], estoque: [], vendasFisicas: [], despesas: [], encomendas: [], notificacoes: [], config: configPadrao() };
+  return { versao: 1, produtos: [], estoque: [], vendasFisicas: [], despesas: [], receitas: [], encomendas: [], notificacoes: [], config: configPadrao() };
 }
 function dadosDoNotion() {
   const S = window.DADOS_NOTION;
@@ -652,7 +654,7 @@ const UI = {
   mkt: { mes: '' },
   dre: { ano: hojeISO().slice(0, 4) },
   fin: { periodo: hojeISO().slice(0, 7) },
-  fluxo: { ano: hojeISO().slice(0, 4) },
+  fluxo: { ano: hojeISO().slice(0, 4), tab: 'mensal', periodo: hojeISO().slice(0, 7) },
   rent: { periodo: 'ano:' + hojeISO().slice(0, 4), q: '', ordem: 'lucro', dir: 'desc', soNeg: false },
   despesas: { periodo: hojeISO().slice(0, 7) },
 };
@@ -717,7 +719,7 @@ const vazioLinha = (cols, msg = 'Nenhum item encontrado.') => `<tr><td class="em
 const NAV = [
   { sec: 'Gestão', itens: [['inicio', 'Início', 'home'], ['produtos', 'Produtos', 'box'], ['estoque', 'Estoque', 'layers'], ['compras', 'Compras', 'truck']] },
   { sec: 'Vendas', itens: [['hoje', 'Vendas do dia', 'clock'], ['marketing', 'Marketing e custos ML', 'megaphone'], ['vendas', 'Vendas', 'cart'], ['fisicas', 'Vendas Físicas', 'store'], ['encomendas', 'Encomendas', 'clipboard']] },
-  { sec: 'Financeiro', itens: [['financeiro', 'Resumo', 'pie'], ['dre', 'DRE', 'trend'], ['fluxo', 'Fluxo de caixa', 'wallet'], ['rentabilidade', 'Lucro por produto', 'bars'], ['despesas', 'Despesas', 'receipt']] },
+  { sec: 'Financeiro', itens: [['financeiro', 'Resumo', 'pie'], ['dre', 'DRE', 'trend'], ['fluxo', 'Fluxo de caixa', 'wallet'], ['rentabilidade', 'Lucro por produto', 'bars']] },
 ];
 function renderNav() {
   const sv = statsVF();
@@ -740,8 +742,9 @@ function vInicio() {
   const P = mapaProdutos();
   const vend = DB.estoque.filter(i => i.status === 'vendido' && i.dVenda);
   const doMes = vend.filter(i => i.dVenda.startsWith(mes));
-  const fat = sum(doMes, i => i.venda), luc = sum(doMes, lucro);
-  const desp = sum(DB.despesas.filter(x => (x.data || '').startsWith(mes)), x => x.valor);
+  mktFin(); const xm = finBase()[mes] || mesVazio(), cmes = contasMes(xm);
+  const fat = cmes.bruta, luc = cmes.lb;
+  const desp = cmes.despOp + cmes.imp - xm.rec;
   const hojeN = vend.filter(i => i.dVenda === h).length;
   const iniSem = addDias(h, -((agora.getDay() + 6) % 7));
   const semN = vend.filter(i => i.dVenda >= iniSem && i.dVenda <= h).length;
@@ -772,19 +775,22 @@ function vInicio() {
   vend.forEach(i => { if (i.dVenda >= d30) v30[i.produto] = (v30[i.produto] || 0) + 1; });
   const repor = Object.entries(v30).filter(([id]) => st[id] && st[id].disp <= 3).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const encAb = DB.encomendas.filter(e => !['Entregue', 'Cancelada'].includes(e.status));
+  const pends = (ML.pendCache?.length ? ML.pendCache : pendencias()).slice(0, 6);
+  const blocoFazer = `<section class="block"><div class="sec-head"><h2>Para fazer agora</h2><span class="hint">${pends.length ? plural(pends.length, 'item', 'itens') : 'tudo em dia'}</span></div><div class="card" style="padding:6px 18px">${pends.length ? pends.map(x => `<div class="notif-item" style="border:0;border-bottom:1px solid var(--line-2)"><span class="notif-dot ${x.nivel}"></span><div class="tx"><b>${esc(x.titulo)}</b><div class="hint">${esc(x.detalhe)}</div></div><button class="btn btn-sm btn-dark" data-action="notifAcao" data-acao="${esc(x.acao)}">${esc(x.botao)}</button></div>`).join('') : '<p class="empty-note" style="padding:14px 0">Nada pendente por enquanto.</p>'}</div></section>`;
 
   const dataLonga = `${DIAS[agora.getDay()]}, ${agora.getDate()} De ${MESES[agora.getMonth()]} De ${agora.getFullYear()}`;
   return `<div class="page">
   ${pageHead(`${saud} 👋`, dataLonga, `<button class="btn" data-action="novaCompra">Registrar compra</button><button class="btn btn-dark" data-action="novaVenda">${ic('plus', 18)} Nova venda</button>`)}
+  ${blocoFazer}
   <div class="grid-home">
     <div>
       <section class="block">
         <div class="sec-head"><h2>Resumo de ${MESES[agora.getMonth()]}</h2><button class="btn-link" data-action="go" data-view="vendas">Ver vendas →</button></div>
         <div class="card"><div class="kpis">
-          <div class="kpi"><div class="kpi-l">Faturamento</div><div class="kpi-v">${brl(fat)}</div><div class="kpi-s">${plural(doMes.length, 'unidade vendida', 'unidades vendidas')}</div></div>
+          <div class="kpi"><div class="kpi-l">Faturamento</div><div class="kpi-v">${brl(fat)}</div><div class="kpi-s">${plural(xm.un, 'unidade vendida', 'unidades vendidas')}</div></div>
           <div class="kpi"><div class="kpi-l">Lucro bruto</div><div class="kpi-v">${brl(luc)}</div><div class="kpi-s">margem ${pct(fat ? luc / fat : null)}</div></div>
-          <div class="kpi"><div class="kpi-l">Despesas</div><div class="kpi-v">${brl(desp)}</div><div class="kpi-s">lançadas no mês</div></div>
-          <div class="kpi"><div class="kpi-l">Lucro líquido</div><div class="kpi-v ${luc - desp < 0 ? 'neg' : ''}">${brl(luc - desp)}</div><div class="kpi-s">bruto − despesas</div></div>
+          <div class="kpi"><div class="kpi-l">Despesas e cobranças</div><div class="kpi-v">${brl(desp)}</div><div class="kpi-s">lançadas + cobradas pelo ML</div></div>
+          <div class="kpi"><div class="kpi-l">Lucro líquido</div><div class="kpi-v ${cmes.ll < 0 ? 'neg' : ''}">${brl(cmes.ll)}</div><div class="kpi-s">depois de tudo, até consumo e perdas</div></div>
         </div></div>
       </section>
       <section class="block">
@@ -857,7 +863,7 @@ function vProdutos() {
     corpo = `<div class="table-wrap"><table class="tb-prod"><thead><tr>${th('sku', 'SKU', true)}${th('nome', 'Nome')}${th('fab', 'Fabricante')}${th('cat', 'Categoria')}${th('disp', 'Disp.', true, 'Disponível: ordenar por estoque disponível')}<th class="num" title="Vendidos no ML e ainda não enviados (estão aqui fisicamente)">Sep.</th><th class="num" title="Físico real = disponível + separado">Físico</th>${th('vend', 'Vend.', true, 'Vendidos: ordenar por unidades vendidas')}${th('custo', 'Custo', true, 'Custo médio')}${th('venda', 'Venda', true, 'Valor de venda médio')}${th('margem', 'Margem', true, 'Margem média')}${th('ncm', 'NCM')}${th('ean', 'EAN')}<th></th></tr></thead><tbody>
     ${vis.length ? vis.map(p => {
       const s = st[p.id];
-      return `<tr><td class="num muted">${p.sku ?? '—'}</td><td class="prod"><div class="pn">${esc(p.nome)}</div></td><td>${chip('fabricante', p.fabricante)}</td><td><div class="chips">${(p.tipos || []).map(t => chip('tipo', t)).join('')}</div></td>
+      return `<tr class="clic" data-action="editarProduto" data-id="${p.id}"><td class="num muted">${p.sku ?? '—'}</td><td class="prod"><div class="pn">${esc(p.nome)}</div></td><td>${chip('fabricante', p.fabricante)}</td><td><div class="chips">${(p.tipos || []).map(t => chip('tipo', t)).join('')}</div></td>
       <td class="num"><b style="color:${s.disp ? 'var(--text)' : 'var(--faint)'}">${s.disp}</b></td><td class="num">${s.sep || '—'}</td><td class="num"><b>${s.disp + s.sep}</b></td><td class="num">${s.vend}</td><td class="num">${brl(s.cc ? s.sc / s.cc : null)}</td><td class="num">${brl(s.cv ? s.sv / s.cv : null)}</td><td class="num">${pct(s.cm ? s.sm / s.cm : null)}</td>
       <td class="muted">${esc(p.ncm || '—')}</td><td class="muted">${esc(p.ean || '—')}</td>
       <td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="compraProduto" data-id="${p.id}">Compra</button>${s.disp ? `<button class="btn btn-sm btn-dark" data-action="venderProduto" data-id="${p.id}">Vender</button>` : ''}<button class="ghost-ic" data-action="editarProduto" data-id="${p.id}" aria-label="Editar produto">${ic('edit', 16)}</button></div></td></tr>`;
@@ -907,14 +913,23 @@ function vEstoque() {
 
   const cQtd = g => `<td><span class="qtd">${g.ids.length}</span></td>`;
   const cSku = i => `<td class="num muted">${P[i.produto]?.sku ?? '—'}</td>`;
-  const cVals = i => `<td class="num">${brl(i.custo)}</td><td class="num">${brl(i.venda)}</td><td class="num">${pct(i.taxa)}</td><td class="num">${brl(i.frete)}</td>${tdLucro(i)}<td class="num">${pct(margem(i))}</td>`;
+  const ANM = mapaAnuncios(), STE = statsProdutos();
+  const sincML = i => i.status === 'avenda' && (ANM[i.produto] || []).some(a => a.status === 'active');
+  const cVals = (i, marca = false) => { const sy = marca && sincML(i) ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho"' : ' class="num"'; return `<td class="num">${brl(i.custo)}</td><td${sy}>${brl(i.venda)}</td><td${sy}>${pct(i.taxa)}</td><td${sy}>${brl(i.frete)}</td>${tdLucro(i)}<td class="num">${pct(margem(i))}</td>`; };
+  const celAnuncio = pid => {
+    if (!ML.anuncios) return '<span class="muted">—</span>';
+    const as = ANM[pid] || []; if (!as.length) return '<span class="chip">sem anúncio</span>';
+    const ativos = as.filter(a => a.status === 'active'), site = STE[pid]?.disp ?? 0, a0 = as[0];
+    const dif = as.length === 1 && a0.qtd !== site;
+    return `${ativos.length ? '<span class="chip c-green">Ativo</span>' : '<span class="chip c-orange">Inativo</span>'}${as.length > 1 ? ` <span class="hint">${as.length} anúncios</span>` : ` <span class="hint ${dif ? 'neg' : ''}" title="Estoque no ML">ML ${a0.qtd ?? '—'}</span>`}`;
+  };
   const bEdit = k => `<button class="ghost-ic" data-action="editarLote" data-lote="${k}" aria-label="Editar">${ic('edit', 16)}</button>`;
   const canal = i => i.vendaFisica ? chip('pessoa', VF[i.vendaFisica]?.pessoa || 'Venda física') : '<span class="chip c-yellow">Mercado Livre</span>';
   let thead, rows, cols;
   if (U.tab === 'avenda') {
-    cols = 17;
-    thead = '<th>Qtd</th><th class="num">SKU</th><th>Produto</th><th class="num">Custo</th><th class="num">V. Venda</th><th class="num">Taxa ML</th><th class="num">Frete</th><th class="num">Lucro</th><th class="num">Margem</th><th class="num">V. V. Física</th><th>Validade</th><th>Lote</th><th>Categoria</th><th>Fornecedor</th><th>NF</th><th>Compra</th><th></th>';
-    rows = vis.map((g, k) => { const i = g.it; return `<tr class="clic" data-action="editarLote" data-lote="${k}">${cQtd(g)}${cSku(i)}${celulaProduto(i, P)}${cVals(i)}<td class="num">${i.precoFisica != null ? brl(i.precoFisica) : '—'}</td><td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td><div class="chips">${(P[i.produto]?.tipos || []).map(t => chip('tipo', t)).join('')}</div></td><td>${chip('fornecedor', i.fornecedor)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-dark" data-action="venderLote" data-lote="${k}">Vender</button>${bEdit(k)}</div></td></tr>`; });
+    cols = 18;
+    thead = '<th>Qtd</th><th class="num">SKU</th><th>Produto</th><th class="num">Custo</th><th class="num">V. Venda</th><th class="num">Taxa ML</th><th class="num">Frete</th><th class="num">Lucro</th><th class="num">Margem</th><th>Anúncio ML</th><th class="num">V. V. Física</th><th>Validade</th><th>Lote</th><th>Categoria</th><th>Fornecedor</th><th>NF</th><th>Compra</th><th></th>';
+    rows = vis.map((g, k) => { const i = g.it; return `<tr class="clic" data-action="editarLote" data-lote="${k}">${cQtd(g)}${cSku(i)}${celulaProduto(i, P)}${cVals(i, true)}<td>${celAnuncio(i.produto)}</td><td class="num">${i.precoFisica != null ? brl(i.precoFisica) : '—'}</td><td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td><div class="chips">${(P[i.produto]?.tipos || []).map(t => chip('tipo', t)).join('')}</div></td><td>${chip('fornecedor', i.fornecedor)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-dark" data-action="venderLote" data-lote="${k}">Vender</button>${bEdit(k)}</div></td></tr>`; });
   } else if (vendidoTab) {
     cols = 16;
     thead = '<th>Qtd</th><th>D. Venda</th><th class="num">SKU</th><th>Produto</th><th class="num">Custo</th><th class="num">V. Venda</th><th class="num">Taxa ML</th><th class="num">Frete</th><th class="num">Lucro</th><th class="num">Margem</th><th>Canal</th><th>Fornecedor</th><th>NF</th><th>Lote</th><th>Compra</th><th></th>';
@@ -1022,7 +1037,7 @@ function vVendas() {
     const grupos = agrupar(itens, U.agrupar);
     LOTES = grupos;
     corpo = `<div class="table-wrap"><table><thead><tr><th>Qtd</th><th>D. Venda</th><th class="num">SKU</th><th>Produto</th><th class="num">Custo</th><th class="num">V. Venda</th><th class="num">Taxa ML</th><th class="num">Frete</th><th class="num">Lucro</th><th class="num">Margem</th><th>Canal</th><th>Compra</th><th></th></tr></thead><tbody>
-    ${grupos.slice(0, U.limite).map((g, k) => { const i = g.it; return `<tr><td><span class="qtd">${g.ids.length}</span></td><td>${fdata(i.dVenda)}</td><td class="num muted">${P[i.produto]?.sku ?? '—'}</td>${celulaProduto(i, P)}<td class="num">${brl(i.custo)}</td><td class="num">${brl(i.venda)}</td><td class="num">${pct(i.taxa)}</td><td class="num">${brl(i.frete)}</td>${tdLucro(i)}<td class="num">${pct(margem(i))}</td><td>${i.vendaFisica ? chip('pessoa', VF[i.vendaFisica]?.pessoa || 'Venda física') : '<span class="chip c-yellow">Mercado Livre</span>'}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="devolverLote" data-lote="${k}">Devolução</button><button class="ghost-ic" data-action="editarLote" data-lote="${k}" aria-label="Editar">${ic('edit', 16)}</button></div></td></tr>`; }).join('') || vazioLinha(13, 'Nenhuma venda neste período.')}
+    ${grupos.slice(0, U.limite).map((g, k) => { const i = g.it; return `<tr class="clic" data-action="editarLote" data-lote="${k}"><td><span class="qtd">${g.ids.length}</span></td><td>${fdata(i.dVenda)}</td><td class="num muted">${P[i.produto]?.sku ?? '—'}</td>${celulaProduto(i, P)}<td class="num">${brl(i.custo)}</td><td class="num">${brl(i.venda)}</td><td class="num">${pct(i.taxa)}</td><td class="num">${brl(i.frete)}</td>${tdLucro(i)}<td class="num">${pct(margem(i))}</td><td>${i.vendaFisica ? chip('pessoa', VF[i.vendaFisica]?.pessoa || 'Venda física') : '<span class="chip c-yellow">Mercado Livre</span>'}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="devolverLote" data-lote="${k}">Devolução</button><button class="ghost-ic" data-action="editarLote" data-lote="${k}" aria-label="Editar">${ic('edit', 16)}</button></div></td></tr>`; }).join('') || vazioLinha(13, 'Nenhuma venda neste período.')}
     </tbody></table></div>${botaoMais(grupos.length, 'vendas.limite', U.limite)}`;
   } else {
     const m = {};
@@ -1074,7 +1089,7 @@ function vEncomendas() {
   ${tabs('encomendas.tab', U.tab, [['abertas', 'Em aberto', nAb], ['fechadas', 'Entregues e canceladas', DB.encomendas.length - nAb], ['todas', 'Todas', DB.encomendas.length]])}
   <div class="toolbar">${campoBusca('enc-q', 'encomendas.q', U.q, 'Buscar cliente ou produto...')}</div>
   <div class="table-wrap livre"><table><thead><tr><th>Cliente</th><th>Produto</th><th class="num">Qtd</th><th class="num">Valor</th><th class="num">Sinal pago</th><th>Pedido em</th><th>Previsão</th><th>Status</th><th>Observações</th><th></th></tr></thead><tbody>
-  ${lista.map(e => `<tr><td><b style="font-weight:500">${esc(e.cliente)}</b></td><td class="prod">${esc(e.produto)}</td><td class="num">${e.qtd ?? '—'}</td><td class="num">${brl(e.valor)}</td><td class="num">${brl(e.sinal)}</td><td class="muted">${fdata(e.dPedido)}</td><td>${e.previsao ? `<span class="chip ${aberta(e) && e.previsao < h ? 'c-red' : 'c-plain'}">${fdata(e.previsao)}</span>` : '<span class="faint">—</span>'}</td>
+  ${lista.map(e => `<tr class="clic" data-action="editarEncomenda" data-id="${e.id}"><td><b style="font-weight:500">${esc(e.cliente)}</b></td><td class="prod">${esc(e.produto)}</td><td class="num">${e.qtd ?? '—'}</td><td class="num">${brl(e.valor)}</td><td class="num">${brl(e.sinal)}</td><td class="muted">${fdata(e.dPedido)}</td><td>${e.previsao ? `<span class="chip ${aberta(e) && e.previsao < h ? 'c-red' : 'c-plain'}">${fdata(e.previsao)}</span>` : '<span class="faint">—</span>'}</td>
   <td><select class="sel enc-status" data-id="${e.id}" aria-label="Status" style="height:32px">${STATUS_ENC.map(s => `<option ${s === e.status ? 'selected' : ''}>${s}</option>`).join('')}</select></td><td class="muted" style="white-space:normal;max-width:260px">${esc(e.obs || '')}</td>
   <td><div class="row-actions"><button class="ghost-ic" data-action="editarEncomenda" data-id="${e.id}" aria-label="Editar">${ic('edit', 16)}</button></div></td></tr>`).join('') || vazioLinha(10, 'Nenhuma encomenda por aqui. Use "Nova encomenda" para registrar um pedido.')}
   </tbody></table></div></div>`;
@@ -1086,6 +1101,8 @@ function vEncomendas() {
 const CATEGORIAS_DESPESA = ['Embalagens e materiais', 'Contador', 'Impostos', 'Software e assinaturas', 'Frete e correios (extra)', 'Pró-labore', 'Marketing fora do ML', 'Outras'];
 const catsDespesa = () => [...new Set([...(DB.config.categoriasDespesa?.length ? DB.config.categoriasDespesa : CATEGORIAS_DESPESA), ...DB.despesas.map(d => d.categoria).filter(Boolean)])];
 /* Venda física pode ser venda de verdade, consumo próprio ou ajuste/perda de estoque (pelo nome ou pelo campo "tipo") */
+const CATEGORIAS_RECEITA = ['Venda fora da plataforma', 'Reembolso ou ressarcimento', 'Aporte (só entra no caixa)', 'Outras receitas'];
+const receitaNoLucro = r => !/aporte|empr[eé]stimo/i.test(r.categoria || '');
 function tipoVF(v) {
   const n = v?.pessoa || '';
   if (v?.tipo) return v.tipo;
@@ -1098,7 +1115,7 @@ function canalUnidade(u, VFm) {
   if (u.vendaFisica) { const t = tipoVF(VFm[u.vendaFisica]); return t === 'venda' ? 'fisica' : t; }
   return 'ml';
 }
-const mesVazio = () => ({ fatMl: 0, fatFis: 0, un: 0, taxas: 0, fretes: 0, cmv: 0, consumo: 0, ajuste: 0, mkt: 0, outrasMl: 0, desp: {}, despTot: 0, compras: 0, recebidoFis: 0 });
+const mesVazio = () => ({ fatMl: 0, fatFis: 0, un: 0, taxas: 0, fretes: 0, cmv: 0, consumo: 0, ajuste: 0, mkt: 0, outrasMl: 0, desp: {}, despTot: 0, compras: 0, recebidoFis: 0, rec: 0, recCaixa: 0 });
 function finBase() {
   const VFm = mapaVF(), m = {}, lin = k => (m[k] = m[k] || mesVazio());
   for (const u of DB.estoque) {
@@ -1121,6 +1138,7 @@ function finBase() {
     if (ehMarketing(c)) x.mkt += v; else x.outrasMl += v;
   }
   for (const v of DB.vendasFisicas) if (tipoVF(v) === 'venda' && v.data) lin(v.data.slice(0, 7)).recebidoFis += v.pago || 0;
+  for (const r of DB.receitas || []) { if (!r.data) continue; const x = lin(r.data.slice(0, 7)); x.recCaixa += r.valor || 0; if (receitaNoLucro(r)) x.rec += r.valor || 0; }
   return m;
 }
 function somaMeses(m, ok) {
@@ -1134,7 +1152,7 @@ function somaMeses(m, ok) {
 function contasMes(x) {
   const bruta = x.fatMl + x.fatFis, liq = bruta - x.taxas - x.fretes, lb = liq - x.cmv;
   const despOp = x.despTot + x.mkt + x.outrasMl, imp = bruta * (DB.config.impostoPct || 0) / 100;
-  const op = lb - despOp - imp, perdas = x.consumo + x.ajuste, ll = op - perdas;
+  const op = lb - despOp - imp + x.rec, perdas = x.consumo + x.ajuste, ll = op - perdas;
   return { bruta, liq, lb, despOp, imp, op, perdas, ll };
 }
 function opcoesPeriodo(m) {
@@ -1175,7 +1193,7 @@ function vFinanceiro() {
   const sv = statsVF();
   const pend = DB.vendasFisicas.filter(v => tipoVF(v) === 'venda').map(v => ({ v, pend: (sv[v.id]?.venda || 0) - (v.pago || 0) })).filter(r => r.pend > 0.005).sort((a, b) => (a.v.data || '').localeCompare(b.v.data || ''));
   const aReceber = sum(pend, r => r.pend), estoqueCusto = sum(DB.estoque.filter(u => u.status === 'avenda'), u => u.custo);
-  const entradas = x.fatMl - x.taxas - x.fretes + x.recebidoFis, saidas = x.compras + x.despTot + x.mkt + x.outrasMl + c.imp;
+  const entradas = x.fatMl - x.taxas - x.fretes + x.recebidoFis + x.recCaixa, saidas = x.compras + x.despTot + x.mkt + x.outrasMl + c.imp;
   const serieF = mesesRecentes(12).map(k => ({ k, v: m[k] ? contasMes(m[k]).bruta : 0 })), serieL = mesesRecentes(12).map(k => ({ k, v: m[k] ? contasMes(m[k]).ll : 0 }));
   const pp = lucroPorProduto(U.periodo), P = mapaProdutos();
   const top = Object.entries(pp).filter(([, v]) => v.un).sort((a, b) => b[1].lucro - a[1].lucro).slice(0, 6), maxL = Math.max(1, ...top.map(([, v]) => Math.abs(v.lucro)));
@@ -1219,6 +1237,7 @@ function dreLinhas(ano, m) {
     ['(−) Custo das mercadorias vendidas', x => x.cmv],
     ['Lucro bruto', x => cm(x).lb, 'b'],
     ['(−) Publicidade e marketing do ML', x => x.mkt], ['(−) Outras cobranças do ML', x => x.outrasMl],
+    ['(+) Outras receitas (lançadas à mão)', x => x.rec],
     ...cats.map(ct => [`(−) Despesas: ${ct}`, x => x.desp[ct] || 0, 'sub']),
     ...(DB.config.impostoPct ? [[`(−) Impostos estimados (${fmtIn(DB.config.impostoPct)}%)`, x => cm(x).imp]] : []),
     ['Resultado operacional', x => cm(x).op, 'b'],
@@ -1245,28 +1264,68 @@ function vDRE() {
   <p class="note">Faturamento e custo entram no mês da venda. Tarifas e fretes são os reais de cada pedido. "Outras cobranças do ML" são parcelamento, Mercado Pago, publicidade e outras taxas da fatura que não estão na tarifa de venda. Consumo próprio e perdas aparecem a custo, depois do resultado operacional, para não distorcer o custo das mercadorias vendidas.</p></div>`;
 }
 
-/* ---------- Fluxo de caixa ---------- */
+/* ---------- Fluxo de caixa (visão mensal + lançamentos manuais de despesas e receitas) ---------- */
 function vFluxo() {
   mktFin();
-  const U = UI.fluxo, m = finBase();
+  const U = UI.fluxo, m = finBase(), nLanc = DB.despesas.length + (DB.receitas || []).length;
+  return `<div class="page">${pageHead('Fluxo de caixa', 'Entradas, saídas e os lançamentos manuais (despesas e receitas) num lugar só', `<button class="btn" data-action="novaReceita">${ic('plus', 18)} Nova receita</button><button class="btn btn-dark" data-action="novaDespesa">${ic('plus', 18)} Nova despesa</button>`)}
+  ${avisoCobr()}${tabs('fluxo.tab', U.tab, [['mensal', 'Visão mensal'], ['lancamentos', 'Lançamentos', nLanc]])}
+  ${U.tab === 'lancamentos' ? fluxoLancamentos(m) : fluxoMensal(m)}</div>`;
+}
+function fluxoMensal(m) {
+  const U = UI.fluxo;
   const anos = [...new Set([hojeISO().slice(0, 4), ...Object.keys(m).map(k => k.slice(0, 4))])].sort().reverse();
   const keys = Object.keys(m).filter(k => k.startsWith(U.ano)).sort();
   let acum = 0;
   const linhas = keys.map(k => {
-    const x = m[k], c = contasMes(x), ml = x.fatMl - x.taxas - x.fretes, ent = ml + x.recebidoFis, sai = x.compras + x.despTot + x.mkt + x.outrasMl + c.imp;
+    const x = m[k], c = contasMes(x), ml = x.fatMl - x.taxas - x.fretes, ent = ml + x.recebidoFis + x.recCaixa, sai = x.compras + x.despTot + x.mkt + x.outrasMl + c.imp;
     acum += ent - sai; return { k, x, ml, ent, sai, saldo: ent - sai, acum, imp: c.imp };
   });
-  const T = linhas.reduce((t, l) => ({ ml: t.ml + l.ml, fis: t.fis + l.x.recebidoFis, ent: t.ent + l.ent, comp: t.comp + l.x.compras, desp: t.desp + l.x.despTot, ml2: t.ml2 + l.x.mkt + l.x.outrasMl, imp: t.imp + l.imp, sai: t.sai + l.sai, saldo: t.saldo + l.saldo }), { ml: 0, fis: 0, ent: 0, comp: 0, desp: 0, ml2: 0, imp: 0, sai: 0, saldo: 0 });
+  const T = linhas.reduce((t, l) => ({ ml: t.ml + l.ml, fis: t.fis + l.x.recebidoFis, rec: t.rec + l.x.recCaixa, ent: t.ent + l.ent, comp: t.comp + l.x.compras, desp: t.desp + l.x.despTot, ml2: t.ml2 + l.x.mkt + l.x.outrasMl, imp: t.imp + l.imp, sai: t.sai + l.sai, saldo: t.saldo + l.saldo }), { ml: 0, fis: 0, rec: 0, ent: 0, comp: 0, desp: 0, ml2: 0, imp: 0, sai: 0, saldo: 0 });
   const sv = statsVF(), aReceber = sum(DB.vendasFisicas.filter(v => tipoVF(v) === 'venda'), v => Math.max(0, (sv[v.id]?.venda || 0) - (v.pago || 0)));
-  return `<div class="page">${pageHead('Fluxo de caixa', 'Quanto entrou e quanto saiu em cada mês (estimado), e o saldo que sobra')}
-  ${avisoCobr()}
-  <div class="toolbar">${select('fluxo.ano', U.ano, anos.map(a => [a, a]), 'Ano')}</div>
-  ${linhas.length ? `<div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Vendas ML (líq. de tarifa e frete)</th><th class="num">Vendas físicas recebidas</th><th class="num">Entradas</th><th class="num">Compras de mercadoria</th><th class="num">Despesas</th><th class="num">Cobranças do ML</th><th class="num">Saídas</th><th class="num">Saldo do mês</th><th class="num">Saldo acumulado</th></tr></thead><tbody>
-  ${linhas.map(l => `<tr><td>${MESES[+l.k.slice(5, 7) - 1]}</td><td class="num">${brl(l.ml)}</td><td class="num">${brl(l.x.recebidoFis)}</td><td class="num"><b style="font-weight:500">${brl(l.ent)}</b></td><td class="num">${brl(l.x.compras)}</td><td class="num">${brl(l.x.despTot + l.imp)}</td><td class="num">${brl(l.x.mkt + l.x.outrasMl)}</td><td class="num"><b style="font-weight:500">${brl(l.sai)}</b></td><td class="num ${l.saldo < 0 ? 'neg' : ''}"><b style="font-weight:500">${brl(l.saldo)}</b></td><td class="num ${l.acum < 0 ? 'neg' : ''}">${brl(l.acum)}</td></tr>`).join('')}
-  <tr class="total"><td>Total ${U.ano}</td><td class="num">${brl(T.ml)}</td><td class="num">${brl(T.fis)}</td><td class="num">${brl(T.ent)}</td><td class="num">${brl(T.comp)}</td><td class="num">${brl(T.desp + T.imp)}</td><td class="num">${brl(T.ml2)}</td><td class="num">${brl(T.sai)}</td><td class="num ${T.saldo < 0 ? 'neg' : ''}">${brl(T.saldo)}</td><td></td></tr>
+  return `<div class="toolbar">${select('fluxo.ano', U.ano, anos.map(a => [a, a]), 'Ano')}</div>
+  ${linhas.length ? `<div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Vendas ML (líq. de tarifa e frete)</th><th class="num">Vendas físicas recebidas</th><th class="num">Outras receitas</th><th class="num">Entradas</th><th class="num">Compras de mercadoria</th><th class="num">Despesas</th><th class="num">Cobranças do ML</th><th class="num">Saídas</th><th class="num">Saldo do mês</th><th class="num">Saldo acumulado</th></tr></thead><tbody>
+  ${linhas.map(l => `<tr class="clic" data-action="fluxoMes" data-mes="${l.k}"><td>${MESES[+l.k.slice(5, 7) - 1]}</td><td class="num">${brl(l.ml)}</td><td class="num">${brl(l.x.recebidoFis)}</td><td class="num">${brl(l.x.recCaixa)}</td><td class="num"><b style="font-weight:500">${brl(l.ent)}</b></td><td class="num">${brl(l.x.compras)}</td><td class="num">${brl(l.x.despTot + l.imp)}</td><td class="num">${brl(l.x.mkt + l.x.outrasMl)}</td><td class="num"><b style="font-weight:500">${brl(l.sai)}</b></td><td class="num ${l.saldo < 0 ? 'neg' : ''}"><b style="font-weight:500">${brl(l.saldo)}</b></td><td class="num ${l.acum < 0 ? 'neg' : ''}">${brl(l.acum)}</td></tr>`).join('')}
+  <tr class="total"><td>Total ${U.ano}</td><td class="num">${brl(T.ml)}</td><td class="num">${brl(T.fis)}</td><td class="num">${brl(T.rec)}</td><td class="num">${brl(T.ent)}</td><td class="num">${brl(T.comp)}</td><td class="num">${brl(T.desp + T.imp)}</td><td class="num">${brl(T.ml2)}</td><td class="num">${brl(T.sai)}</td><td class="num ${T.saldo < 0 ? 'neg' : ''}">${brl(T.saldo)}</td><td></td></tr>
   </tbody></table></div>` : '<div class="table-wrap livre"><table><tbody>' + vazioLinha(3, 'Sem movimento neste ano.') + '</tbody></table></div>'}
   <div class="card side-card" style="margin-top:18px"><div class="side-head"><h2>Ainda para entrar</h2></div><p style="margin:0">${brl(aReceber)} de vendas físicas pendentes. <button class="btn-link" data-action="go" data-view="fisicas">Ver →</button></p></div>
-  <p class="note">É uma estimativa: as vendas do ML entram no mês da venda (o ML libera o dinheiro dias depois), as compras entram no mês da data da compra, e as vendas físicas pelo valor já pago na data da venda. Compras com bonificação não entram. Serve para enxergar a tendência, não para fechar o extrato.</p></div>`;
+  <p class="note">Clique num mês para ver os lançamentos dele. É uma estimativa: as vendas do ML entram no mês da venda (o ML libera o dinheiro dias depois), as compras no mês da compra, e as vendas físicas pelo valor já pago. Compras com bonificação não entram. Serve para enxergar a tendência, não para fechar o extrato.</p>`;
+}
+function fluxoLancamentos(m) {
+  const U = UI.fluxo;
+  const itens = [...DB.despesas.map(d => ({ t: 'desp', d })), ...(DB.receitas || []).map(r => ({ t: 'rec', d: r }))];
+  const meses = [...new Set([hojeISO().slice(0, 7), ...itens.filter(x => x.d.data).map(x => x.d.data.slice(0, 7))])].sort().reverse(), anos = [...new Set(meses.map(k => k.slice(0, 4)))];
+  const lista = itens.filter(x => filtroPeriodo(U.periodo, x.d.data)).sort((a, b) => (b.d.data || '').localeCompare(a.d.data || ''));
+  const tot = t => sum(lista.filter(x => x.t === t), x => x.d.valor);
+  const porCat = t => { const o = {}; lista.filter(x => x.t === t).forEach(x => { const c = x.d.categoria || 'Sem categoria'; o[c] = (o[c] || 0) + (x.d.valor || 0); }); return Object.entries(o).sort((a, b) => b[1] - a[1]); };
+  const x = somaMeses(m, k => filtroPeriodo(U.periodo, k)), ml = x.mkt + x.outrasMl;
+  const catLista = t => porCat(t).length ? `<ul class="mini-list">${porCat(t).map(([k, v]) => `<li><span>${esc(k)}</span><b style="font-weight:500">${brl(v)}</b></li>`).join('')}</ul>` : '<p class="empty-note">Nada lançado</p>';
+  return `<div class="grid-side"><div>
+    <div class="toolbar">${select('fluxo.periodo', U.periodo, [...meses.map(k => [k, nomeMes(k)]), ...anos.map(a => ['ano:' + a, 'Ano ' + a]), ['tudo', 'Todo o período']], 'Período')}</div>
+    <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th>Categoria</th><th class="num">Valor</th><th></th></tr></thead><tbody>
+    ${lista.map(({ t, d }) => `<tr class="clic" data-action="${t === 'desp' ? 'editarDespesa' : 'editarReceita'}" data-id="${d.id}"><td class="muted">${fdata(d.data)}</td><td>${t === 'desp' ? '<span class="chip c-red">Despesa</span>' : '<span class="chip c-green">Receita</span>'}</td><td>${esc(d.nome)}</td><td class="muted">${esc(d.categoria || '—')}</td><td class="num ${t === 'desp' ? 'neg' : ''}">${t === 'desp' ? '−' : '+'} ${brl(d.valor)}</td><td><div class="row-actions"><button class="ghost-ic" data-action="${t === 'desp' ? 'editarDespesa' : 'editarReceita'}" data-id="${d.id}" aria-label="Editar">${ic('edit', 16)}</button></div></td></tr>`).join('') || vazioLinha(6, 'Nenhum lançamento neste período. Lance embalagens, contador, impostos e qualquer receita que não venha das vendas.')}
+    ${lista.length ? `<tr class="total"><td colspan="4">Receitas ${brl(tot('rec'))} − despesas ${brl(tot('desp'))}</td><td class="num ${tot('rec') - tot('desp') < 0 ? 'neg' : ''}">${brl(tot('rec') - tot('desp'))}</td><td></td></tr>` : ''}
+    </tbody></table></div></div>
+  <div><div class="card side-card"><div class="side-head"><h2>Despesas por categoria</h2></div>${catLista('desp')}<p class="hint" style="margin:10px 0 0">O ML cobrou <b>${brl(ml)}</b> no período (já entra no DRE, não precisa lançar)</p></div>
+    <div class="card side-card" style="margin-top:18px"><div class="side-head"><h2>Receitas por categoria</h2></div>${catLista('rec')}<p class="hint" style="margin:10px 0 0">Aportes só entram no caixa, não no lucro.</p></div></div></div>`;
+}
+function modalReceita(id = null) {
+  const r = id ? (DB.receitas || []).find(x => x.id === id) : { nome: '', valor: null, data: hojeISO(), categoria: '' };
+  if (!r) return;
+  abrirModal({
+    titulo: id ? 'Editar receita' : 'Nova receita', largura: 520,
+    corpo: `<div class="form-grid">${campo('re-nome', 'Descrição', inputTxt('re-nome', r.nome, 'placeholder="Ex.: Venda no balcão, reembolso do fornecedor"'), 'full')}</div><div class="form-grid">${campo('re-valor', 'Valor', inputNum('re-valor', r.valor))}${campo('re-data', 'Data', inputData('re-data', r.data))}</div><div class="form-grid">${campo('re-cat', 'Categoria', `<input id="re-cat" list="dl-recat" value="${esc(r.categoria || '')}" autocomplete="off" placeholder="Escolha ou digite uma nova">${datalistLista('dl-recat', [...new Set([...CATEGORIAS_RECEITA, ...(DB.receitas || []).map(x => x.categoria).filter(Boolean)])])}`, 'full')}</div><p class="hint" style="margin:0">Categorias que começam com "Aporte" ou "Empréstimo" entram só no caixa, não no lucro.</p>`,
+    rodape: rodapePadrao('Salvar', id ? `<button class="btn btn-sm btn-danger left" data-action="excluirReceita" data-id="${id}">Excluir</button>` : ''),
+    onConfirm: () => {
+      const nome = val('re-nome'), valor = parseNum(val('re-valor'));
+      if (!nome) return erro('Informe a descrição da receita.');
+      if (valor == null || Number.isNaN(valor) || valor <= 0) return erro('Informe o valor.');
+      const dados = { nome, valor, data: val('re-data') || hojeISO(), categoria: val('re-cat') || null };
+      if (!DB.receitas) DB.receitas = [];
+      if (id) Object.assign(r, dados); else DB.receitas.push({ id: uid(), ...dados });
+      commit(id ? 'Receita atualizada' : 'Receita lançada');
+    },
+  });
 }
 
 /* ---------- Lucro por produto ---------- */
@@ -1290,32 +1349,6 @@ function vRentabilidade() {
   ${rows.length ? `<tr class="total"><td>Total (${rows.length} produtos)</td><td class="num">${T.un}</td><td class="num">${brl(T.fat)}</td><td class="num">${brl(T.custo)}</td><td class="num">${brl(T.tf)}</td><td class="num ${T.lucro < 0 ? 'neg' : ''}">${brl(T.lucro)}</td><td class="num">${pct(T.fat ? T.lucro / T.fat : null)}</td><td></td><td></td><td></td></tr>` : ''}
   </tbody></table></div>
   <p class="note">Curva A = os produtos que juntos dão 80% do lucro, B = até 95%, C = o resto. "Dura (dias)" é o estoque à venda dividido pelas vendas dos últimos 30 dias (vermelho = menos de 15 dias, hora de repor). Consumo próprio e ajustes de estoque não entram. Este lucro não desconta a publicidade nem as outras cobranças do ML, que são do mês inteiro (veja o DRE).</p></div>`;
-}
-
-/* ---------- Despesas ---------- */
-function vDespesas() {
-  const U = UI.despesas, m = finBase();
-  const meses = [...new Set([hojeISO().slice(0, 7), ...DB.despesas.filter(d => d.data).map(d => d.data.slice(0, 7))])].sort().reverse();
-  const anos = [...new Set(meses.map(k => k.slice(0, 4)))];
-  const lista = DB.despesas.filter(d => filtroPeriodo(U.periodo, d.data)).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
-  const porMes = {}, porCat = {};
-  DB.despesas.forEach(d => { const k = (d.data || '').slice(0, 7) || 'sem data'; porMes[k] = (porMes[k] || 0) + (d.valor || 0); });
-  lista.forEach(d => { const c = d.categoria || 'Sem categoria'; porCat[c] = (porCat[c] || 0) + (d.valor || 0); });
-  const x = somaMeses(m, k => filtroPeriodo(U.periodo, k)), mlDoPeriodo = x.mkt + x.outrasMl;
-  return `<div class="page">${pageHead('Despesas', 'Gastos da operação que entram no DRE (as cobranças do ML vêm sozinhas, não precisa lançar)', `<button class="btn btn-dark" data-action="novaDespesa">${ic('plus', 18)} Nova despesa</button>`)}
-  <div class="grid-side"><div>
-    <div class="toolbar">${select('despesas.periodo', U.periodo, [...meses.map(k => [k, nomeMes(k)]), ...anos.map(a => ['ano:' + a, 'Ano ' + a]), ['tudo', 'Todo o período']], 'Período')}</div>
-    <div class="table-wrap livre"><table><thead><tr><th>Nome</th><th>Categoria</th><th>Data</th><th class="num">Valor</th><th></th></tr></thead><tbody>
-    ${lista.map(d => `<tr class="clic" data-action="editarDespesa" data-id="${d.id}"><td>${esc(d.nome)}</td><td class="muted">${esc(d.categoria || '—')}</td><td class="muted">${fdata(d.data)}</td><td class="num">${brl(d.valor)}</td><td><div class="row-actions"><button class="ghost-ic" data-action="editarDespesa" data-id="${d.id}" aria-label="Editar">${ic('edit', 16)}</button></div></td></tr>`).join('') || vazioLinha(5, 'Nenhuma despesa neste período. Lance embalagens, contador, impostos e o que mais sair do seu bolso.')}
-    ${lista.length ? `<tr class="total"><td colspan="3">Total</td><td class="num">${brl(sum(lista, d => d.valor))}</td><td></td></tr>` : ''}
-    </tbody></table></div>
-  </div>
-  <div><div class="card side-card"><div class="side-head"><h2>Por categoria</h2></div>
-    ${Object.keys(porCat).length ? `<ul class="mini-list">${Object.entries(porCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<li><span>${esc(k)}</span><b style="font-weight:500">${brl(v)}</b></li>`).join('')}</ul>` : '<p class="empty-note">Nenhuma despesa lançada</p>'}
-    <p class="hint" style="margin:10px 0 0">Cobradas pelo ML no período: <b>${brl(mlDoPeriodo)}</b> (já no DRE)</p></div>
-  <div class="card side-card" style="margin-top:18px"><div class="side-head"><h2>Por mês</h2></div>
-    ${Object.keys(porMes).length ? `<ul class="mini-list">${Object.entries(porMes).sort((a, b) => b[0].localeCompare(a[0])).map(([k, v]) => `<li><span>${k === 'sem data' ? 'Sem data' : nomeMes(k)}</span><b style="font-weight:500">${brl(v)}</b></li>`).join('')}</ul>` : '<p class="empty-note">Nenhuma despesa lançada</p>'}
-  </div></div></div></div>`;
 }
 
 /* =========================================================
@@ -1437,6 +1470,12 @@ async function mlCarregarAnuncios(forcar = false) {
     await mlChamar('anuncios'); r = await mlChamar('anuncios_list'); ML.anuncios = r.anuncios || [];
   }
   return ML.anuncios;
+}
+/* anúncios do ML de cada produto (ativos e pausados) */
+function mapaAnuncios() {
+  const m = {};
+  for (const a of ML.anuncios || []) { if (a.status !== 'active' && a.status !== 'paused') continue; const p = anuncioProduto(a); if (p) (m[p.id] = m[p.id] || []).push(a); }
+  return m;
 }
 const anuncioProduto = a => candidatosMl({ item_id: a.item_id, title: a.titulo, sku: a.sku })[0] || null;
 /* frete que o vendedor pagou nos últimos pedidos do anúncio (média dos 3 mais recentes, por unidade) */
@@ -1769,6 +1808,19 @@ function notifAdd(tipo, texto, extra = {}) {
 }
 function pendencias() {
   const out = [], add = (nivel, titulo, detalhe, acao, botao) => out.push({ nivel, titulo, detalhe, acao, botao });
+  if (ML.pedidos) { const nSep = separadosIds().size; if (nSep) add('alta', `${plural(nSep, 'unidade vendida', 'unidades vendidas')} para enviar`, 'Vendas do ML que ainda não saíram: a unidade está na sua prateleira.', 'estoque:separado', 'Ver separados'); }
+  if (ML.anuncios?.length) {
+    const sem = [], dif = [];
+    for (const a of ML.anuncios) {
+      if (a.status !== 'active' || a.tem_variacoes) continue;
+      const p = anuncioProduto(a); if (!p) continue;
+      const site = unidadesDisponiveis(p.id).length;
+      if (site === 0 && a.qtd > 0) sem.push(a); else if (a.qtd !== site) dif.push(a);
+    }
+    if (sem.length) add('alta', `${plural(sem.length, 'anúncio ativo', 'anúncios ativos')} sem estoque no site`, `Risco de vender o que não tem: ${sem.slice(0, 2).map(a => (a.titulo || '').slice(0, 28)).join('; ')}${sem.length > 2 ? '...' : ''}. Pause ou ajuste.`, 'estoque:anuncios', 'Ver anúncios');
+    if (dif.length) add('media', `${plural(dif.length, 'anúncio', 'anúncios')} com estoque diferente do ML`, 'Envie o estoque do site para o ML pelo botão da aba Anúncios ML.', 'estoque:anuncios', 'Ver anúncios');
+  }
+  { const prej = new Set(); DB.estoque.forEach(u => { if (u.status === 'avenda' && u.venda && lucro(u) != null && lucro(u) < 0) prej.add(u.produto); }); if (prej.size) add('media', `${plural(prej.size, 'produto', 'produtos')} à venda com prejuízo`, 'O preço de venda não cobre custo, tarifa e frete. Revise o preço do anúncio.', 'estoque:avenda', 'Ver estoque'); }
   if (conferenciaPendente()) add('media', 'Conferência de estoque da semana', DB.config.ultimaConferencia ? `Última conferência em ${fdata(DB.config.ultimaConferencia)}. Conte a prateleira e compare com o sistema.` : 'Você ainda não fez nenhuma conferência. Conte a prateleira e compare com o sistema.', 'conferencia', 'Conferir');
   if (ML.status && !ML.status.connected) add('alta', 'Mercado Livre desconectado', 'Sem conexão, as vendas novas não chegam. Reconecte em Dados e backup.', 'go:config', 'Conectar');
   if (ML.autoMsg && ML.autoMsg.startsWith('Sincronização automática falhou')) add('alta', 'Sincronização com o ML falhou', ML.autoMsg, 'go:config', 'Ver');
@@ -2307,7 +2359,9 @@ function modalDevolver(lote) {
 function modalLote(lote) {
   const i = lote.it, P = mapaProdutos(), n = lote.ids.length;
   const vfs = DB.vendasFisicas.slice().sort((a, b) => (b.data || '').localeCompare(a.data || ''));
-  const corpo = `<div class="info">${n > 1 ? `As alterações valem para as <b>${n} unidades</b> deste lote.` : 'Editando 1 unidade.'}</div>
+  const ansP = mapaAnuncios()[i.produto] || [], trava = i.status === 'avenda' && ansP.some(a => a.status === 'active');
+  const blocoML = ansP.length ? `<div class="info" style="margin-bottom:12px"><b>Anúncios deste produto no ML</b><br>${ansP.map(a => `<span class="chip ${a.status === 'active' ? 'c-green' : 'c-orange'}">${a.status === 'active' ? 'Ativo' : 'Inativo'}</span> ${esc((a.titulo || '').slice(0, 54))} · ${brl(a.preco)} · taxa ${a.taxa_pct != null ? pct(a.taxa_pct) : '—'} · ML ${a.qtd ?? '—'} <button class="btn-link" data-action="mlAbrirAnuncio" data-item="${esc(a.item_id)}">abrir</button>`).join('<br>')}${trava ? '<br><span class="muted">Preço, taxa e frete vêm do anúncio e se atualizam sozinhos, por isso ficam bloqueados aqui. Para vender por outro valor numa venda física, use o V. Venda Física.</span>' : ''}</div>` : '';
+  const corpo = `${blocoML}<div class="info">${n > 1 ? `As alterações valem para as <b>${n} unidades</b> deste lote.` : 'Editando 1 unidade.'}</div>
   <div class="form-grid">${campo('ml-prod', 'Produto', `<input id="ml-prod" list="dl-ml" value="${esc(P[i.produto] ? labelProduto(P[i.produto]) : '')}" autocomplete="off">${datalistProdutos('dl-ml', false)}`, 'full')}</div>
   <div class="form-grid">
     ${campo('ml-status', 'Status', `<select id="ml-status"><option value="avenda" ${i.status === 'avenda' ? 'selected' : ''}>À venda</option><option value="vendido" ${i.status === 'vendido' ? 'selected' : ''}>Vendido</option></select>`)}
@@ -2316,9 +2370,9 @@ function modalLote(lote) {
   </div>
   <div class="form-grid">
     ${campo('ml-custo', 'Custo', inputNum('ml-custo', i.custo))}
-    ${campo('ml-venda', 'V. Venda', inputNum('ml-venda', i.venda))}
-    ${campo('ml-taxa', 'Taxa ML (%)', inputNum('ml-taxa', i.taxa != null ? i.taxa * 100 : null))}
-    ${campo('ml-frete', 'Frete', inputNum('ml-frete', i.frete))}
+    ${campo('ml-venda', 'V. Venda', inputNum('ml-venda', i.venda, trava ? 'readonly title="Vem do anúncio do ML"' : ''))}
+    ${campo('ml-taxa', 'Taxa ML (%)', inputNum('ml-taxa', i.taxa != null ? i.taxa * 100 : null, trava ? 'readonly title="Vem do anúncio do ML"' : ''))}
+    ${campo('ml-frete', 'Frete', inputNum('ml-frete', i.frete, trava ? 'readonly title="Vem do anúncio do ML"' : ''))}
   </div>
   <div class="form-grid">${campo('ml-pvf', 'V. Venda Física (R$)', inputNum('ml-pvf', i.precoFisica))}<div class="f"><span class="hint" style="margin-top:26px;display:block">Só vale quando a unidade entra numa venda física: substitui o V. Venda.</span></div></div>
   <div class="form-grid">
@@ -2935,7 +2989,7 @@ function fecharBusca() { const b = $('#busca-global'); b.value = ''; renderBusca
 /* =========================================================
    Renderização e navegação
    ========================================================= */
-const VIEWS = { marketing: vMarketing, hoje: vHoje, inicio: vInicio, produtos: vProdutos, estoque: vEstoque, compras: vCompras, vendas: vVendas, fisicas: vFisicas, encomendas: vEncomendas, dre: vDRE, financeiro: vFinanceiro, fluxo: vFluxo, rentabilidade: vRentabilidade, despesas: vDespesas, config: vConfig };
+const VIEWS = { marketing: vMarketing, hoje: vHoje, inicio: vInicio, produtos: vProdutos, estoque: vEstoque, compras: vCompras, vendas: vVendas, fisicas: vFisicas, encomendas: vEncomendas, dre: vDRE, financeiro: vFinanceiro, fluxo: vFluxo, rentabilidade: vRentabilidade, despesas: vFluxo, config: vConfig };
 function render() {
   const a = document.activeElement;
   const id = a && a.id && $('#main').contains(a) ? a.id : null;
@@ -2954,13 +3008,15 @@ function render() {
 let renderTimer = null;
 function agendarRender(ms) { clearTimeout(renderTimer); renderTimer = setTimeout(render, ms); }
 function go(view) {
+  view = aliasView(view);
   document.body.classList.remove('menu-aberto');
   if (location.hash.slice(1) === view) { UI.view = view; render(); window.scrollTo(0, 0); }
   else location.hash = view;
 }
+const aliasView = v => { if (v === 'despesas') { UI.fluxo.tab = 'lancamentos'; return 'fluxo'; } return v; };
 window.addEventListener('hashchange', () => {
   if (!DB) return;   // ainda na tela de login
-  const v = location.hash.slice(1);
+  const v = aliasView(location.hash.slice(1));
   UI.view = VIEWS[v] ? v : 'inicio';
   render();
   window.scrollTo(0, 0);
@@ -3058,6 +3114,10 @@ const ACOES = {
   editarEncomenda: el => modalEncomenda(el.dataset.id),
   excluirEncomenda: el => confirmar('Excluir encomenda', 'Excluir esta encomenda?', () => { DB.encomendas = DB.encomendas.filter(x => x.id !== el.dataset.id); commit('Encomenda excluída'); }, { texto: 'Excluir', perigo: true }),
   novaDespesa: () => modalDespesa(),
+  novaReceita: () => modalReceita(),
+  editarReceita: el => modalReceita(el.dataset.id),
+  excluirReceita: el => confirmar('Excluir receita', 'Excluir esta receita?', () => { DB.receitas = DB.receitas.filter(x => x.id !== el.dataset.id); commit('Receita excluída'); }, { texto: 'Excluir', perigo: true }),
+  fluxoMes: el => { UI.fluxo.tab = 'lancamentos'; UI.fluxo.periodo = el.dataset.mes; render(); },
   editarDespesa: el => modalDespesa(el.dataset.id),
   excluirDespesa: el => confirmar('Excluir despesa', 'Excluir esta despesa?', () => { DB.despesas = DB.despesas.filter(x => x.id !== el.dataset.id); commit('Despesa excluída'); }, { texto: 'Excluir', perigo: true }),
   exportar: () => {
@@ -3156,6 +3216,7 @@ const ACOES = {
     $('#notif-panel').hidden = true; const a = el.dataset.acao;
     if (a === 'conferir') { if (!ML.pedidos) return go('config'); return modalConferirML(); }
     if (a === 'conferencia') return modalConferencia();
+    if (a.startsWith('estoque:')) { UI.estoque.tab = a.slice(8); return go('estoque'); }
     if (a.startsWith('go:')) go(a.slice(3));
   },
   hojeDia: el => { UI.hoje.data = el.dataset.dia; render(); },
@@ -3460,7 +3521,7 @@ function sairDaConta() {
 async function iniciarApp() {
   carregar();
   await carregarNuvem();
-  UI.view = VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : 'inicio';
+  { const hv = aliasView(location.hash.slice(1)); UI.view = VIEWS[hv] ? hv : 'inicio'; }
   render();
   mlAuto();
   recalcPendencias();
