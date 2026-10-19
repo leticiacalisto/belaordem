@@ -89,3 +89,11 @@ create table if not exists bo_push (
 alter table bo_push enable row level security;
 create table if not exists bo_kv (chave text primary key, valor text not null);
 alter table bo_kv enable row level security;
+
+-- Anúncios do ML (preço, taxa vigente, quantidade) para sincronizar com o site
+create table if not exists ml_anuncios (
+  item_id text primary key, titulo text, sku text, preco numeric(12,2), tipo text, categoria text,
+  taxa_valor numeric(12,2), taxa_pct numeric(8,5), frete_gratis boolean, logistica text,
+  qtd int, vendidos int, status text, tem_variacoes boolean, atualizado timestamptz default now()
+);
+alter table ml_anuncios enable row level security;

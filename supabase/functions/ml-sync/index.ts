@@ -222,6 +222,73 @@ async function envios(limite: number) {
   return { abertos: (pend ?? []).length, feitos, erros: erros.slice(0, 3) };
 }
 
+// ---- Anúncios do ML: preço, tipo de anúncio, taxa vigente e quantidade (para manter o site igual ao ML)
+async function anuncios() {
+  const { token, userId } = await getAccess();
+  const h = { Authorization: `Bearer ${token}` };
+  const ids: string[] = [];
+  for (const st of ["active", "paused"]) {
+    for (let off = 0; off < 1500; off += 100) {
+      const r = await fetch(`https://api.mercadolibre.com/users/${userId}/items/search?status=${st}&limit=100&offset=${off}`, { headers: h });
+      const j = await r.json();
+      if (!r.ok) throw new Error(`ML anúncios: ${r.status} ${j.message ?? ""}`);
+      ids.push(...(j.results ?? []));
+      if ((j.results ?? []).length < 100) break;
+    }
+  }
+  // deno-lint-ignore no-explicit-any
+  const itens: any[] = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    const r = await fetch(`https://api.mercadolibre.com/items?ids=${ids.slice(i, i + 20).join(",")}&attributes=id,title,price,available_quantity,sold_quantity,listing_type_id,category_id,status,seller_custom_field,attributes,shipping,variations`, { headers: h });
+    const j = await r.json();
+    if (!r.ok) throw new Error(`ML itens: ${r.status}`);
+    for (const x of j) if (x.code === 200 && x.body) itens.push(x.body);
+  }
+  // taxa vigente de cada anúncio (depende do preço, do tipo de anúncio e da categoria)
+  // deno-lint-ignore no-explicit-any
+  const linhas: any[] = [];
+  for (let i = 0; i < itens.length; i += 5) {
+    await Promise.all(itens.slice(i, i + 5).map(async (it) => {
+      let taxaValor: number | null = null;
+      try {
+        const r = await fetch(`https://api.mercadolibre.com/sites/MLB/listing_prices?price=${it.price}&listing_type_id=${it.listing_type_id}&category_id=${it.category_id}`, { headers: h });
+        if (r.ok) { const j = await r.json(); taxaValor = Number((Array.isArray(j) ? j[0] : j)?.sale_fee_amount ?? NaN); if (Number.isNaN(taxaValor)) taxaValor = null; }
+      } catch (_) { /* segue sem taxa */ }
+      const sku = it.seller_custom_field ?? (it.attributes ?? []).find((a: { id: string }) => a.id === "SELLER_SKU")?.value_name ?? null;
+      linhas.push({
+        item_id: it.id, titulo: it.title, sku, preco: it.price, tipo: it.listing_type_id, categoria: it.category_id,
+        taxa_valor: taxaValor, taxa_pct: taxaValor != null && it.price ? taxaValor / it.price : null,
+        frete_gratis: it.shipping?.free_shipping ?? null, logistica: it.shipping?.logistic_type ?? null,
+        qtd: it.available_quantity ?? null, vendidos: it.sold_quantity ?? null, status: it.status,
+        tem_variacoes: (it.variations ?? []).length > 0, atualizado: new Date().toISOString(),
+      });
+    }));
+  }
+  for (let i = 0; i < linhas.length; i += 100) {
+    const { error } = await db.from("ml_anuncios").upsert(linhas.slice(i, i + 100));
+    if (error) throw error;
+  }
+  return { total: linhas.length, ativos: linhas.filter((x) => x.status === "active").length };
+}
+
+// Envia a quantidade em estoque para o ML (só o que o site mandar; cada anúncio individualmente)
+async function estoqueMl(itens: { item_id: string; qtd: number }[]) {
+  const { token } = await getAccess();
+  const res: { item_id: string; ok: boolean; msg?: string }[] = [];
+  for (const x of itens.slice(0, 60)) {
+    const q = Math.max(0, Math.floor(Number(x.qtd)));
+    if (!/^MLB\d+$/.test(String(x.item_id)) || !Number.isFinite(q)) { res.push({ item_id: String(x.item_id), ok: false, msg: "dados inválidos" }); continue; }
+    const r = await fetch(`https://api.mercadolibre.com/items/${x.item_id}`, {
+      method: "PUT", headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ available_quantity: q }),
+    });
+    if (r.ok) { res.push({ item_id: x.item_id, ok: true }); await db.from("ml_anuncios").update({ qtd: q, atualizado: new Date().toISOString() }).eq("item_id", x.item_id); }
+    else { const j = await r.json().catch(() => ({})); res.push({ item_id: x.item_id, ok: false, msg: `${r.status} ${j.message ?? j.error ?? ""}`.slice(0, 160) }); }
+    await new Promise((ok) => setTimeout(ok, 150));
+  }
+  return { resultados: res };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (!(await autenticar(req))) return json({ error: "não autorizado" }, 401);
@@ -256,6 +323,13 @@ Deno.serve(async (req) => {
     if (action === "reclamacoes_teste") return json(await reclamacoesTeste((body.pedidos ?? []).map(Number)));
     if (action === "fretes") return json(await fretes(Math.min(Number(body.limite) || 60, 100)));
     if (action === "envios") return json(await envios(Math.min(Number(body.limite) || 40, 80)));
+    if (action === "anuncios") return json(await anuncios());
+    if (action === "anuncios_list") {
+      const { data, error } = await db.from("ml_anuncios").select("*").order("titulo");
+      if (error) throw error;
+      return json({ anuncios: data });
+    }
+    if (action === "estoque_ml") return json(await estoqueMl(Array.isArray(body.itens) ? body.itens : []));
     if (action === "list") {
       const off = Number(body.offset) || 0, lim = Math.min(Number(body.limit) || 1000, 1000);
       const { data, error } = await db.from("ml_orders").select("*")

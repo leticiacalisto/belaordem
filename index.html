@@ -1146,6 +1146,7 @@ function vConfig() {
       <button class="btn btn-dark" data-action="salvarPrefs">Salvar preferências</button>
     </div>
     ${cardML()}
+    ${cardAnuncios()}
     ${cardLembrete()}
   </div></div>`;
 }
@@ -1209,6 +1210,102 @@ function cardLembrete() {
       <button class="btn" data-action="lembreteTeste">Enviar teste (e-mail + notificação)</button></div>
     ${ios ? '<p class="hint" style="margin:8px 0 0">No iPhone: abra este site no Safari, toque em Compartilhar → "Adicionar à Tela de Início", abra o app pela tela inicial e ative aqui.</p>' : ''}
     ${LEMB.msg ? `<p class="hint" style="margin:8px 0 0">${esc(LEMB.msg)}</p>` : ''}</div>`;
+}
+
+/* ---------- Anúncios do ML ----------
+   ML -> site (automático): preço, taxa vigente e frete recente dos anúncios atualizam as unidades À VENDA.
+   Site -> ML (com confirmação): a quantidade à venda de cada produto vira o estoque do anúncio. */
+const ANUNCIOS_HORAS = 3;
+async function mlCarregarAnuncios(forcar = false) {
+  let r = await mlChamar('anuncios_list'); ML.anuncios = r.anuncios || [];
+  const ult = ML.anuncios.reduce((m, a) => (a.atualizado > m ? a.atualizado : m), '');
+  if (forcar || !ult || Date.now() - Date.parse(ult) > ANUNCIOS_HORAS * 36e5) {
+    await mlChamar('anuncios'); r = await mlChamar('anuncios_list'); ML.anuncios = r.anuncios || [];
+  }
+  return ML.anuncios;
+}
+const anuncioProduto = a => candidatosMl({ item_id: a.item_id, title: a.titulo, sku: a.sku })[0] || null;
+/* frete que o vendedor pagou nos últimos pedidos do anúncio (média dos 3 mais recentes, por unidade) */
+function freteRecente(itemId) {
+  const v = [];
+  for (const o of ML.pedidos || []) {
+    if (!pedidoValido(o) || o.frete_vendedor == null) continue;
+    const it = (o.items || []).find(i => i.item_id === itemId);
+    if (it) v.push([o.date_created, Number(o.frete_vendedor) / Math.max(1, qtdLiquida(o, it))]);
+  }
+  v.sort((a, b) => b[0].localeCompare(a[0]));
+  const u = v.slice(0, 3);
+  return u.length ? Math.round(u.reduce((t, x) => t + x[1], 0) / u.length * 100) / 100 : null;
+}
+function aplicarAnuncios() {
+  const porProd = {};
+  for (const a of ML.anuncios || []) {
+    if (a.status !== 'active' || a.tem_variacoes) continue;
+    const p = anuncioProduto(a); if (!p) continue;
+    (porProd[p.id] = porProd[p.id] || []).push(a);
+  }
+  const ult = {};
+  for (const o of ML.pedidos || []) for (const it of o.items || []) if (!ult[it.item_id] || o.date_created > ult[it.item_id]) ult[it.item_id] = o.date_created;
+  let mudou = 0; const precos = [];
+  for (const [pid, as] of Object.entries(porProd)) {
+    const a = [...as].sort((x, y) => (ult[y.item_id] || '').localeCompare(ult[x.item_id] || '') || x.preco - y.preco)[0];
+    const alvo = { venda: Number(a.preco), taxa: a.taxa_pct != null ? Math.round(Number(a.taxa_pct) * 1e5) / 1e5 : null, frete: freteRecente(a.item_id) };
+    let n = 0, antes = null;
+    for (const u of DB.estoque) {
+      if (u.produto !== pid || u.status !== 'avenda') continue;
+      let m = false;
+      if (alvo.venda > 0 && Math.abs((u.venda || 0) - alvo.venda) > 0.005) { if (antes == null && u.venda != null) antes = u.venda; u.venda = alvo.venda; m = true; }
+      if (alvo.taxa != null && Math.abs((u.taxa ?? -1) - alvo.taxa) > 0.0005) { u.taxa = alvo.taxa; m = true; }
+      if (alvo.frete != null && Math.abs((u.frete ?? -1) - alvo.frete) > 0.005) { u.frete = alvo.frete; m = true; }
+      if (m) n++;
+    }
+    if (n) { mudou += n; if (antes != null && Math.abs(antes - alvo.venda) > 0.005) precos.push(`${(DB.produtos.find(x => x.id === pid)?.nome || '').slice(0, 30)}: ${brl(antes)} → ${brl(alvo.venda)}`); }
+  }
+  if (precos.length) notifAdd('sistema', `Preço do ML mudou: ${precos.slice(0, 4).join('; ')}${precos.length > 4 ? ` e mais ${precos.length - 4}` : ''}`);
+  return { mudou, precos };
+}
+function cardAnuncios() {
+  const s = ML.status, an = (ML.anuncios || []).filter(a => a.status === 'active');
+  const linhas = an.map(a => { const p = anuncioProduto(a); return { a, p, site: p ? unidadesDisponiveis(p.id).length : null }; });
+  const tabela = !ML.anuncios ? '<p class="hint" style="margin-top:12px">Aperte "Atualizar anúncios do ML" para carregar os anúncios (também carregam sozinhos ao abrir o site).</p>'
+    : `<div class="table-wrap livre" style="margin-top:14px;max-height:420px;overflow:auto"><table><thead><tr><th>Anúncio</th><th>Produto</th><th class="num">Preço ML</th><th class="num">Taxa</th><th class="num">Estoque ML</th><th class="num">Estoque site</th></tr></thead><tbody>
+      ${linhas.map(l => `<tr><td>${esc((l.a.titulo || '').slice(0, 60))}</td><td>${l.p ? esc(l.p.nome.slice(0, 34)) : '<span class="chip c-orange">sem vínculo</span>'}</td><td class="num">${brl(l.a.preco)}</td><td class="num">${l.a.taxa_pct != null ? pct(l.a.taxa_pct) : '—'}</td><td class="num">${l.a.qtd ?? '—'}</td><td class="num ${l.p && l.a.qtd !== l.site ? 'neg' : ''}">${l.site ?? '—'}</td></tr>`).join('')}
+      </tbody></table></div><p class="hint" style="margin-top:6px">${plural(an.length, 'anúncio ativo', 'anúncios ativos')}. Preço, taxa e frete vêm do ML e atualizam as unidades à venda sozinhos. O estoque só vai para o ML quando você confirmar.</p>`;
+  return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Anúncios do ML e estoque</h2></div>
+    <div class="cfg-actions"><button class="btn" data-action="mlAnuncios" ${ML.ocupado || !s?.connected ? 'disabled' : ''}>Atualizar anúncios do ML</button>
+      <button class="btn btn-dark" data-action="mlEnviarEstoque" ${ML.anuncios?.length ? '' : 'disabled'}>Enviar estoque para o ML...</button></div>
+    ${ML.anunciosMsg ? `<p class="hint" style="margin:8px 0 0">${esc(ML.anunciosMsg)}</p>` : ''}${tabela}</div>`;
+}
+function modalEnviarEstoqueML() {
+  const an = (ML.anuncios || []).filter(a => (a.status === 'active' || a.status === 'paused') && !a.tem_variacoes);
+  const porProd = {};
+  const todas = an.map(a => { const p = anuncioProduto(a); if (p) (porProd[p.id] = porProd[p.id] || []).push(a); return { a, p }; }).filter(x => x.p);
+  const linhas = todas.map(x => ({ ...x, site: unidadesDisponiveis(x.p.id).length, varios: porProd[x.p.id].length > 1 })).filter(x => x.a.qtd !== x.site);
+  const corpo = linhas.length ? `<p class="muted" style="margin:0 0 10px;line-height:1.5">O ML já desconta o que vende. Aqui vai o estoque à venda do site (sem os separados). Confira, ajuste se quiser e marque o que enviar. Quantidade 0 faz o ML pausar o anúncio. Anúncios do mesmo produto vêm desmarcados.</p>
+    <div class="table-wrap" style="max-height:52vh;overflow:auto"><table><thead><tr><th></th><th>Anúncio</th><th>Produto</th><th class="num">ML</th><th class="num">Site</th><th>Enviar</th></tr></thead><tbody id="ee-corpo">
+    ${linhas.map(l => `<tr data-item="${esc(l.a.item_id)}"><td><input type="checkbox" class="ee-ck" ${l.varios ? '' : 'checked'} aria-label="Enviar"></td><td>${esc((l.a.titulo || '').slice(0, 48))}${l.varios ? ' <span class="chip c-orange">vários anúncios</span>' : ''}</td><td class="muted">${esc(l.p.nome.slice(0, 28))}</td><td class="num">${l.a.qtd ?? '—'}</td><td class="num"><b>${l.site}</b></td><td><input class="ee-q" type="number" min="0" value="${l.site}" style="width:72px"></td></tr>`).join('')}
+    </tbody></table></div>`
+    : '<p class="muted">O estoque de todos os anúncios vinculados já está igual ao do site.</p>';
+  abrirModal({
+    titulo: 'Enviar estoque para o ML', corpo, largura: 860, rodape: linhas.length ? rodapePadrao('Enviar selecionados') : `<button class="btn btn-dark" data-action="fecharModal">Fechar</button>`,
+    onConfirm: () => {
+      if (!linhas.length) return;
+      const itens = $$('#ee-corpo tr').filter(tr => tr.querySelector('.ee-ck').checked).map(tr => ({ item_id: tr.dataset.item, qtd: parseInt(tr.querySelector('.ee-q').value, 10) }));
+      if (!itens.length) return erro('Marque ao menos um anúncio.');
+      if (itens.some(x => !(x.qtd >= 0))) return erro('Confira as quantidades.');
+      confirmar('Enviar estoque ao ML', `Enviar a quantidade de <b>${plural(itens.length, 'anúncio', 'anúncios')}</b> para o Mercado Livre? Isso muda o estoque publicado agora${itens.some(x => x.qtd === 0) ? ' e o ML pausa os anúncios com quantidade 0' : ''}.`, async () => {
+        ML.ocupado = true; ML.progresso = 'Enviando estoque ao ML...'; render();
+        try {
+          const r = await mlChamar('estoque_ml', { itens });
+          const ok = r.resultados.filter(x => x.ok), falhas = r.resultados.filter(x => !x.ok);
+          for (const x of ok) { const a = ML.anuncios.find(y => y.item_id === x.item_id); const q = itens.find(y => y.item_id === x.item_id)?.qtd; if (a) a.qtd = q; }
+          ML.anunciosMsg = `Estoque enviado ao ML: ${ok.length} ok${falhas.length ? `, ${falhas.length} com erro (${falhas.slice(0, 3).map(f => `${f.item_id}: ${f.msg}`).join(' | ')})` : ''}`;
+          toast(ML.anunciosMsg, falhas.length > 0);
+        } catch (e) { ML.anunciosMsg = `Envio de estoque falhou: ${e.message}`; toast(ML.anunciosMsg, true); }
+        ML.ocupado = false; ML.progresso = ''; render();
+      }, { texto: 'Enviar agora' });
+    },
+  });
 }
 
 /* ---------- Conferir pedidos do ML com o estoque (evita venda duplicada) ----------
@@ -1684,6 +1781,7 @@ async function mlAuto() {
     for (let k = 0; k < 6; k++) { const r = await mlChamar('fretes', { limite: 60 }); if (!r.restantes || !r.feitos) break; }
     try { await mlChamar('envios', { limite: 40 }); } catch (_) { /* função ainda sem a ação */ }
     ML.pedidos = await mlListarTudo();
+    let ra = { mudou: 0 }; try { await mlCarregarAnuncios(); ra = aplicarAnuncios(); } catch (_) { /* função ainda sem a ação */ }
     const desde = new Date(Date.now() - AUTO_DIAS * 864e5).toISOString().slice(0, 10);
     const linhas = mlAnalisar().filter(l => l.data >= desde);
     const seguras = linhas.filter(l => ['dup', 'nova', 'bonif'].includes(l.estado) && candidatosMl(l.it).length === 1);
@@ -1710,6 +1808,7 @@ async function mlAuto() {
     if (r.novas + r.novas_boni) partes.push(`${plural(r.novas + r.novas_boni, 'venda lançada', 'vendas lançadas')}`);
     if (r.vinc) partes.push(`${r.vinc} já existente(s) alinhada(s)`);
     if (fretes) partes.push(`${plural(fretes, 'frete', 'fretes')}`);
+    if (ra.mudou) partes.push(`${plural(ra.mudou, 'preço/taxa atualizado do ML', 'preços/taxas atualizados do ML')}`);
     if (devol) partes.push(`${plural(devol, 'devolução', 'devoluções')}`);
     ML.autoMsg = partes.length || revisar ? `Última sincronização: ${partes.join(', ') || 'nada novo'}${revisar ? ` · ${plural(revisar, 'pedido', 'pedidos')} para revisar` : ''}` : 'Mercado Livre em dia';
     iniciarPoll(); recalcPendencias();
@@ -2831,6 +2930,15 @@ const ACOES = {
     } catch (e) { LEMB.msg = `Teste falhou: ${e.message}`; toast(LEMB.msg, true); }
     render();
   },
+  mlAnuncios: async () => {
+    ML.ocupado = true; ML.progresso = 'Lendo anúncios do ML...'; render();
+    try {
+      await mlCarregarAnuncios(true); const r = aplicarAnuncios(); if (r.mudou) commit();
+      ML.anunciosMsg = `${plural(ML.anuncios.length, 'anúncio lido', 'anúncios lidos')}. ${r.mudou ? `${plural(r.mudou, 'unidade atualizada', 'unidades atualizadas')} com preço/taxa/frete do ML.` : 'As unidades à venda já estão iguais ao ML.'}`;
+    } catch (e) { ML.anunciosMsg = `Falhou: ${e.message}`; toast(ML.anunciosMsg, true); }
+    ML.ocupado = false; ML.progresso = ''; render();
+  },
+  mlEnviarEstoque: () => modalEnviarEstoqueML(),
   conferencia: () => modalConferencia(),
   mlVincular: () => modalVincularAnuncios(),
   mlMarcarBonif: () => $$('.ml-inc[data-bonif]').forEach(c => { c.checked = true; }),
