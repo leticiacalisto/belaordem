@@ -315,6 +315,19 @@ td.empty-cell{padding:40px;text-align:center;color:var(--faint);white-space:norm
 .notif-vazio{padding:18px 16px;color:var(--faint)}
 .hoje-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0}
 .hoje-delta{font-size:12px;margin-top:3px}.hoje-delta.up{color:var(--grn)}.hoje-delta.down{color:var(--red)}.hoje-delta.flat{color:var(--faint)}
+.fin-bars{display:grid;gap:6px;margin-top:10px}
+.fin-col{display:grid;min-width:0}
+.fin-pos,.fin-neg{position:relative}
+.fin-pos .b{position:absolute;bottom:0;left:12%;right:12%;border-radius:4px 4px 0 0;background:var(--accent-2);min-height:2px}
+.fin-neg .b{position:absolute;top:0;left:12%;right:12%;border-radius:0 0 4px 4px;background:var(--red);min-height:2px}
+.fin-lbl{font-size:11px;color:var(--faint);text-align:center;margin-top:5px}
+.fin-val{font-size:11px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}
+.canal-row{display:grid;grid-template-columns:120px 1fr auto;gap:12px;align-items:center;margin:10px 0;font-size:13.5px}
+.canal-bar{height:10px;border-radius:5px;background:#eee9fb;overflow:hidden}
+.canal-bar i{display:block;height:100%;border-radius:5px;background:var(--accent-2)}
+tr.sub td{color:var(--muted);font-size:12.5px}
+tr.sub td:first-child{padding-left:26px}
+tr.sub.dr{display:table-row}
 .hoje-bars{display:grid;grid-template-columns:repeat(24,1fr);gap:4px;align-items:end;height:140px;margin-top:10px}
 .hoje-col{position:relative;height:100%;display:flex;align-items:flex-end}
 .hoje-col .b{position:absolute;bottom:0;left:0;right:0;border-radius:4px 4px 0 0;background:var(--accent-2);min-height:2px}
@@ -390,6 +403,9 @@ const sum = (arr, f) => arr.reduce((s, x) => s + (Number(f(x)) || 0), 0);
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
 const ICON = {
+  wallet: '<path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2z"/><circle cx="16.5" cy="14.5" r="1"/>',
+  pie: '<path d="M12 3v9h9"/><path d="M21 12A9 9 0 1 1 12 3"/>',
+  bars: '<path d="M5 20V10M12 20V4M19 20v-7"/>',
   play: '<path d="M7 4.5v15l12-7.5z"/>',
   pause: '<path d="M8 5v14M16 5v14"/>',
   home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
@@ -635,6 +651,9 @@ const UI = {
   hoje: { data: hojeISO() },
   mkt: { mes: '' },
   dre: { ano: hojeISO().slice(0, 4) },
+  fin: { periodo: hojeISO().slice(0, 7) },
+  fluxo: { ano: hojeISO().slice(0, 4) },
+  rent: { periodo: 'ano:' + hojeISO().slice(0, 4), q: '', ordem: 'lucro', dir: 'desc', soNeg: false },
   despesas: { periodo: hojeISO().slice(0, 7) },
 };
 let LOTES = [];
@@ -698,7 +717,7 @@ const vazioLinha = (cols, msg = 'Nenhum item encontrado.') => `<tr><td class="em
 const NAV = [
   { sec: 'Gestão', itens: [['inicio', 'Início', 'home'], ['produtos', 'Produtos', 'box'], ['estoque', 'Estoque', 'layers'], ['compras', 'Compras', 'truck']] },
   { sec: 'Vendas', itens: [['hoje', 'Vendas do dia', 'clock'], ['marketing', 'Marketing e custos ML', 'megaphone'], ['vendas', 'Vendas', 'cart'], ['fisicas', 'Vendas Físicas', 'store'], ['encomendas', 'Encomendas', 'clipboard']] },
-  { sec: 'Financeiro', itens: [['dre', 'DRE', 'trend'], ['despesas', 'Despesas', 'receipt']] },
+  { sec: 'Financeiro', itens: [['financeiro', 'Resumo', 'pie'], ['dre', 'DRE', 'trend'], ['fluxo', 'Fluxo de caixa', 'wallet'], ['rentabilidade', 'Lucro por produto', 'bars'], ['despesas', 'Despesas', 'receipt']] },
 ];
 function renderNav() {
   const sv = statsVF();
@@ -1062,52 +1081,241 @@ function vEncomendas() {
 }
 
 /* =========================================================
-   DRE
+   Financeiro: a mesma conta alimenta Resumo, DRE, Fluxo de caixa e Lucro por produto
    ========================================================= */
-function vDRE() {
-  const U = UI.dre;
-  const anos = [...new Set([hojeISO().slice(0, 4), ...DB.estoque.filter(i => i.dVenda).map(i => i.dVenda.slice(0, 4)), ...DB.despesas.filter(d => d.data).map(d => d.data.slice(0, 4))])].sort().reverse();
-  const m = {};
-  const add = k => (m[k] = m[k] || { fat: 0, cmv: 0, taxas: 0, fretes: 0, luc: 0, desp: 0, un: 0 });
-  DB.estoque.forEach(i => {
-    if (i.status !== 'vendido' || !(i.dVenda || '').startsWith(U.ano)) return;
-    const x = add(i.dVenda.slice(0, 7));
-    x.fat += i.venda || 0; x.cmv += i.custo || 0; x.taxas += (i.venda || 0) * (i.taxa || 0); x.fretes += i.frete || 0; x.luc += lucro(i) || 0; x.un++;
-  });
-  DB.despesas.forEach(d => { if ((d.data || '').startsWith(U.ano)) add(d.data.slice(0, 7)).desp += d.valor || 0; });
-  const linhas = Object.entries(m).sort((a, b) => a[0].localeCompare(b[0]));
-  const maxAbs = Math.max(1, ...linhas.map(([, x]) => Math.abs(x.luc - x.desp)));
-  const T = linhas.reduce((t, [, x]) => { for (const k in x) t[k] = (t[k] || 0) + x[k]; return t; }, {});
-  return `<div class="page">${pageHead('DRE', 'Demonstrativo de resultado, calculado automaticamente a partir das vendas e despesas', `<button class="btn" data-action="go" data-view="despesas">Ver despesas</button>`)}
-  <div class="toolbar">${select('dre.ano', U.ano, anos.map(a => [a, a]), 'Ano')}</div>
-  <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Unidades</th><th class="num">Faturamento</th><th class="num">(−) Custo mercadoria</th><th class="num">(−) Taxas ML</th><th class="num">(−) Fretes</th><th class="num">Lucro bruto</th><th class="num">(−) Despesas</th><th class="num">Lucro líquido</th><th class="num">Margem líq.</th><th></th></tr></thead><tbody>
-  ${linhas.map(([k, x]) => { const liq = x.luc - x.desp; return `<tr><td>${MESES[+k.slice(5, 7) - 1]}</td><td class="num">${x.un}</td><td class="num">${brl(x.fat)}</td><td class="num">${brl(x.cmv)}</td><td class="num">${brl(x.taxas)}</td><td class="num">${brl(x.fretes)}</td><td class="num">${brl(x.luc)}</td><td class="num">${brl(x.desp)}</td><td class="num ${liq < 0 ? 'neg' : ''}"><b style="font-weight:500">${brl(liq)}</b></td><td class="num">${pct(x.fat ? liq / x.fat : null)}</td><td><span class="minibar ${liq < 0 ? 'neg' : ''}"><i style="width:${Math.abs(liq) / maxAbs * 100}%"></i></span></td></tr>`; }).join('') || vazioLinha(11, 'Sem movimento neste ano.')}
-  ${linhas.length ? `<tr class="total"><td>Total ${U.ano}</td><td class="num">${T.un}</td><td class="num">${brl(T.fat)}</td><td class="num">${brl(T.cmv)}</td><td class="num">${brl(T.taxas)}</td><td class="num">${brl(T.fretes)}</td><td class="num">${brl(T.luc)}</td><td class="num">${brl(T.desp)}</td><td class="num ${T.luc - T.desp < 0 ? 'neg' : ''}">${brl(T.luc - T.desp)}</td><td class="num">${pct(T.fat ? (T.luc - T.desp) / T.fat : null)}</td><td></td></tr>` : ''}
-  </tbody></table></div>
-  <p class="note">Lucro bruto = faturamento − custo − taxa ML − frete (a mesma fórmula de "Lucro" do Notion). Lucro líquido = lucro bruto − despesas do mês.</p></div>`;
+const CATEGORIAS_DESPESA = ['Embalagens e materiais', 'Contador', 'Impostos', 'Software e assinaturas', 'Frete e correios (extra)', 'Pró-labore', 'Marketing fora do ML', 'Outras'];
+const catsDespesa = () => [...new Set([...(DB.config.categoriasDespesa?.length ? DB.config.categoriasDespesa : CATEGORIAS_DESPESA), ...DB.despesas.map(d => d.categoria).filter(Boolean)])];
+/* Venda física pode ser venda de verdade, consumo próprio ou ajuste/perda de estoque (pelo nome ou pelo campo "tipo") */
+function tipoVF(v) {
+  const n = v?.pessoa || '';
+  if (v?.tipo) return v.tipo;
+  if (/consumo|let[ií]cia/i.test(n)) return 'consumo';
+  if (/ajuste de estoque|contagem|baixa de estoque|baixa estoque/i.test(n)) return 'ajuste';
+  return 'venda';
+}
+function canalUnidade(u, VFm) {
+  if (u.mlPedido) return 'ml';
+  if (u.vendaFisica) { const t = tipoVF(VFm[u.vendaFisica]); return t === 'venda' ? 'fisica' : t; }
+  return 'ml';
+}
+const mesVazio = () => ({ fatMl: 0, fatFis: 0, un: 0, taxas: 0, fretes: 0, cmv: 0, consumo: 0, ajuste: 0, mkt: 0, outrasMl: 0, desp: {}, despTot: 0, compras: 0, recebidoFis: 0 });
+function finBase() {
+  const VFm = mapaVF(), m = {}, lin = k => (m[k] = m[k] || mesVazio());
+  for (const u of DB.estoque) {
+    if (u.dCompra && !(u.fornecedor || '').includes('onifica')) lin(u.dCompra.slice(0, 7)).compras += u.custo || 0;
+    if (u.status !== 'vendido' || !u.dVenda) continue;
+    const x = lin(u.dVenda.slice(0, 7)), c = canalUnidade(u, VFm), v = u.venda || 0;
+    if (c === 'consumo') { x.consumo += u.custo || 0; continue; }
+    if (c === 'ajuste') { x.ajuste += u.custo || 0; continue; }
+    if (c === 'ml') x.fatMl += v; else x.fatFis += v;
+    x.un++; x.taxas += v * (u.taxa || 0); x.fretes += u.frete || 0; x.cmv += u.custo || 0;
+  }
+  for (const d of DB.despesas) {
+    if (!d.data) continue;
+    const x = lin(d.data.slice(0, 7)), c = d.categoria || 'Sem categoria';
+    x.desp[c] = (x.desp[c] || 0) + (d.valor || 0); x.despTot += d.valor || 0;
+  }
+  for (const c of ML.mkt?.cobrancas || []) {      // o que o ML cobra e não está na tarifa nem no frete de cada venda
+    if (jaNoLucro(c) || !c.mes) continue;
+    const x = lin(c.mes), v = +c.valor || 0;
+    if (ehMarketing(c)) x.mkt += v; else x.outrasMl += v;
+  }
+  for (const v of DB.vendasFisicas) if (tipoVF(v) === 'venda' && v.data) lin(v.data.slice(0, 7)).recebidoFis += v.pago || 0;
+  return m;
+}
+function somaMeses(m, ok) {
+  const t = mesVazio();
+  for (const [k, x] of Object.entries(m)) {
+    if (!ok(k)) continue;
+    for (const f of Object.keys(t)) { if (f === 'desp') { for (const [c, v] of Object.entries(x.desp)) t.desp[c] = (t.desp[c] || 0) + v; } else t[f] += x[f]; }
+  }
+  return t;
+}
+function contasMes(x) {
+  const bruta = x.fatMl + x.fatFis, liq = bruta - x.taxas - x.fretes, lb = liq - x.cmv;
+  const despOp = x.despTot + x.mkt + x.outrasMl, imp = bruta * (DB.config.impostoPct || 0) / 100;
+  const op = lb - despOp - imp, perdas = x.consumo + x.ajuste, ll = op - perdas;
+  return { bruta, liq, lb, despOp, imp, op, perdas, ll };
+}
+function opcoesPeriodo(m) {
+  const meses = [...new Set([hojeISO().slice(0, 7), ...Object.keys(m)])].sort().reverse(), anos = [...new Set(meses.map(k => k.slice(0, 4)))];
+  return [...meses.map(k => [k, nomeMes(k)]), ...anos.map(a => ['ano:' + a, 'Ano ' + a]), ['tudo', 'Todo o período']];
+}
+/* lucro de cada produto no período (só vendas de verdade; consumo e ajustes ficam de fora) */
+function lucroPorProduto(periodo) {
+  const VFm = mapaVF(), r = {}, d30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+  for (const u of DB.estoque) {
+    if (u.status !== 'vendido' || !u.dVenda) continue;
+    const c = canalUnidade(u, VFm); if (c === 'consumo' || c === 'ajuste') continue;
+    const x = (r[u.produto] = r[u.produto] || { un: 0, un30: 0, fat: 0, custo: 0, taxas: 0, fretes: 0 });
+    if (u.dVenda >= d30) x.un30++;
+    if (!filtroPeriodo(periodo, u.dVenda)) continue;
+    const v = u.venda || 0; x.un++; x.fat += v; x.custo += u.custo || 0; x.taxas += v * (u.taxa || 0); x.fretes += u.frete || 0;
+  }
+  for (const x of Object.values(r)) x.lucro = x.fat - x.custo - x.taxas - x.fretes;
+  return r;
+}
+const mesesRecentes = n => { const o = [], d = new Date(); d.setDate(1); for (let i = n - 1; i >= 0; i--) { const t = new Date(d.getFullYear(), d.getMonth() - i, 1); o.push(`${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`); } return o; };
+const mesCurto = k => MESES[+k.slice(5, 7) - 1].slice(0, 3);
+/* barras de um mês cada: acima da linha o positivo, abaixo o negativo; uma série só, valor no balão ao passar o mouse */
+function barrasMensais(serie) {
+  const mx = Math.max(1, ...serie.map(x => Math.abs(x.v))), temNeg = serie.some(x => x.v < 0), hP = temNeg ? 96 : 130, hN = temNeg ? 44 : 0;
+  return `<div class="fin-bars" style="grid-template-columns:repeat(${serie.length},1fr)">${serie.map((x, i) => `<div class="fin-col" style="grid-template-rows:${hP}px ${hN}px auto" title="${nomeMes(x.k)}: ${brl(x.v)}" role="img" aria-label="${nomeMes(x.k)}: ${brl(x.v)}">
+    <div class="fin-pos">${x.v > 0 ? `<div class="b" style="height:${(x.v / mx * 100).toFixed(1)}%"></div>` : ''}</div><div class="fin-neg">${x.v < 0 ? `<div class="b" style="height:${(-x.v / mx * 100).toFixed(1)}%"></div>` : ''}</div>
+    <div class="fin-lbl">${mesCurto(x.k)}</div>${i === serie.length - 1 ? `<div class="fin-val">${brl(x.v)}</div>` : '<div class="fin-val">&nbsp;</div>'}</div>`).join('')}</div>`;
+}
+const kpiFin = (l, v, extra = '', neg = false) => `<div class="kpi"><div class="kpi-l">${l}</div><div class="kpi-v ${neg ? 'neg' : ''}">${v}</div>${extra}</div>`;
+function mktFin() { if (!ML.mktOk && !ML.mktCarregando && sessao()) { ML.mktCarregando = true; mktCarregar(); } }
+const avisoCobr = () => ML.mktOk && (ML.mkt?.cobrancas || []).length ? '' : `<div class="info" style="margin-bottom:14px">${ML.mktOk ? 'As cobranças do ML ainda não foram carregadas: abra <b>Marketing e custos ML</b> e clique em "Atualizar cobranças". Enquanto isso, o resultado não desconta publicidade nem as outras cobranças do ML.' : 'Carregando as cobranças do ML...'}</div>`;
+
+/* ---------- Resumo ---------- */
+function vFinanceiro() {
+  mktFin();
+  const U = UI.fin, m = finBase(), x = somaMeses(m, k => filtroPeriodo(U.periodo, k)), c = contasMes(x);
+  const sv = statsVF();
+  const pend = DB.vendasFisicas.filter(v => tipoVF(v) === 'venda').map(v => ({ v, pend: (sv[v.id]?.venda || 0) - (v.pago || 0) })).filter(r => r.pend > 0.005).sort((a, b) => (a.v.data || '').localeCompare(b.v.data || ''));
+  const aReceber = sum(pend, r => r.pend), estoqueCusto = sum(DB.estoque.filter(u => u.status === 'avenda'), u => u.custo);
+  const entradas = x.fatMl - x.taxas - x.fretes + x.recebidoFis, saidas = x.compras + x.despTot + x.mkt + x.outrasMl + c.imp;
+  const serieF = mesesRecentes(12).map(k => ({ k, v: m[k] ? contasMes(m[k]).bruta : 0 })), serieL = mesesRecentes(12).map(k => ({ k, v: m[k] ? contasMes(m[k]).ll : 0 }));
+  const pp = lucroPorProduto(U.periodo), P = mapaProdutos();
+  const top = Object.entries(pp).filter(([, v]) => v.un).sort((a, b) => b[1].lucro - a[1].lucro).slice(0, 6), maxL = Math.max(1, ...top.map(([, v]) => Math.abs(v.lucro)));
+  const canal = (rot, v) => `<div class="canal-row"><span>${rot}</span><div class="canal-bar"><i style="width:${c.bruta ? Math.max(0, v / c.bruta * 100).toFixed(1) : 0}%"></i></div><span><b style="font-weight:500">${brl(v)}</b> <span class="muted">${pct(c.bruta ? v / c.bruta : null)}</span></span></div>`;
+  return `<div class="page">${pageHead('Resumo financeiro', 'Como a loja está indo: vendas, lucro de verdade (depois de tudo), dinheiro a receber e estoque parado', `<button class="btn" data-action="go" data-view="dre">Ver DRE completo</button>`)}
+  ${avisoCobr()}
+  <div class="toolbar">${select('fin.periodo', U.periodo, opcoesPeriodo(m), 'Período')}</div>
+  <div class="card block" style="margin-bottom:22px"><div class="hoje-grid">
+    ${kpiFin('Faturamento', brl(c.bruta), `<div class="kpi-s">${plural(x.un, 'unidade vendida', 'unidades vendidas')}</div>`)}
+    ${kpiFin('Lucro bruto', brl(c.lb), `<div class="kpi-s">margem ${pct(c.bruta ? c.lb / c.bruta : null)} (depois de custo, tarifas e fretes)</div>`, c.lb < 0)}
+    ${kpiFin('Despesas e cobranças', brl(c.despOp + c.imp), `<div class="kpi-s">${brl(x.mkt + x.outrasMl)} do ML · ${brl(x.despTot)} lançadas${c.imp ? ` · ${brl(c.imp)} impostos` : ''}</div>`)}
+    ${kpiFin('Lucro líquido', brl(c.ll), `<div class="kpi-s">margem ${pct(c.bruta ? c.ll / c.bruta : null)}${c.perdas ? ` · já desconta ${brl(c.perdas)} de consumo e perdas` : ''}</div>`, c.ll < 0)}
+  </div><div class="hoje-grid" style="border-top:1px solid var(--line-2)">
+    ${kpiFin('A receber', brl(aReceber), `<div class="kpi-s">${plural(pend.length, 'venda física pendente', 'vendas físicas pendentes')}</div>`)}
+    ${kpiFin('Estoque a custo', brl(estoqueCusto), `<div class="kpi-s">dinheiro parado nas unidades à venda</div>`)}
+    ${kpiFin('Caixa do período (estimado)', brl(entradas - saidas), `<div class="kpi-s">${brl(entradas)} entrou − ${brl(saidas)} saiu</div>`, entradas - saidas < 0)}
+    ${kpiFin('Consumo próprio e perdas', brl(c.perdas), `<div class="kpi-s">${brl(x.consumo)} consumo · ${brl(x.ajuste)} ajustes de estoque</div>`)}
+  </div></div>
+  <div class="grid-side"><div>
+    <section class="block"><div class="sec-head"><h2>Faturamento por mês</h2><span class="hint">últimos 12 meses</span></div><div class="card" style="padding:14px 18px">${barrasMensais(serieF)}</div></section>
+    <section class="block"><div class="sec-head"><h2>Lucro líquido por mês</h2><span class="hint">vermelho = prejuízo</span></div><div class="card" style="padding:14px 18px">${barrasMensais(serieL)}</div></section>
+  </div><div>
+    <div class="card side-card"><div class="side-head"><h2>Por canal</h2></div>${canal('Mercado Livre', x.fatMl)}${canal('Vendas físicas', x.fatFis)}</div>
+    <div class="card side-card" style="margin-top:18px"><div class="side-head"><h2>Produtos que mais dão lucro</h2><button class="btn-link" data-action="go" data-view="rentabilidade">Ver todos →</button></div>
+      ${top.length ? top.map(([id, v]) => `<div class="canal-row" style="grid-template-columns:1fr auto"><span>${esc((P[id]?.nome || '—').slice(0, 34))}<div class="canal-bar" style="margin-top:5px"><i style="width:${Math.max(0, v.lucro / maxL * 100).toFixed(1)}%"></i></div></span><b style="font-weight:500" class="${v.lucro < 0 ? 'neg' : ''}">${brl(v.lucro)}</b></div>`).join('') : '<p class="empty-note">Sem vendas neste período</p>'}</div>
+    <div class="card side-card" style="margin-top:18px"><div class="side-head"><h2>A receber</h2><button class="btn-link" data-action="go" data-view="fisicas">Ver vendas físicas →</button></div>
+      ${pend.length ? `<ul class="mini-list">${pend.slice(0, 6).map(r => `<li><span>${esc(r.v.pessoa)}<span class="muted"> · ${fdata(r.v.data)}</span></span><b style="font-weight:500">${brl(r.pend)}</b></li>`).join('')}</ul>` : '<p class="empty-note">Nada pendente</p>'}</div>
+  </div></div></div>`;
 }
 
-/* =========================================================
-   Despesas
-   ========================================================= */
+/* ---------- DRE ---------- */
+function dreLinhas(ano, m) {
+  const keys = Object.keys(m).filter(k => k.startsWith(ano)).sort();
+  const cats = [...new Set(keys.flatMap(k => Object.keys(m[k].desp)))].sort();
+  const cm = x => contasMes(x), neg = (f) => x => f(x);
+  const L = [
+    ['Receita bruta', x => cm(x).bruta, 'b'],
+    ['Vendas no Mercado Livre', x => x.fatMl, 'sub'], ['Vendas físicas', x => x.fatFis, 'sub'],
+    ['(−) Tarifas de venda do ML', x => x.taxas], ['(−) Fretes pagos', x => x.fretes],
+    ['Receita líquida', x => cm(x).liq, 'b'],
+    ['(−) Custo das mercadorias vendidas', x => x.cmv],
+    ['Lucro bruto', x => cm(x).lb, 'b'],
+    ['(−) Publicidade e marketing do ML', x => x.mkt], ['(−) Outras cobranças do ML', x => x.outrasMl],
+    ...cats.map(ct => [`(−) Despesas: ${ct}`, x => x.desp[ct] || 0, 'sub']),
+    ...(DB.config.impostoPct ? [[`(−) Impostos estimados (${fmtIn(DB.config.impostoPct)}%)`, x => cm(x).imp]] : []),
+    ['Resultado operacional', x => cm(x).op, 'b'],
+    ['(−) Consumo próprio (a custo)', x => x.consumo], ['(−) Perdas e ajustes de estoque (a custo)', x => x.ajuste],
+    ['Lucro líquido', x => cm(x).ll, 'b total'],
+    ['Margem líquida', x => { const c = cm(x); return c.bruta ? c.ll / c.bruta : null; }, 'pct'],
+  ];
+  return { keys, L, soma: somaMeses(m, k => k.startsWith(ano)) };
+}
+function vDRE() {
+  mktFin();
+  const U = UI.dre, m = finBase();
+  const anos = [...new Set([hojeISO().slice(0, 4), ...Object.keys(m).map(k => k.slice(0, 4))])].sort().reverse();
+  const { keys, L, soma } = dreLinhas(U.ano, m);
+  const fmt = (v, t) => t === 'pct' ? pct(v) : brl(v);
+  const cel = (x, f, t) => { const v = f(x); return `<td class="num ${t.includes('b') && v < 0 ? 'neg' : ''}">${t.includes('b') ? `<b style="font-weight:500">${fmt(v, t)}</b>` : fmt(v, t)}</td>`; };
+  return `<div class="page">${pageHead('DRE', 'Demonstrativo de resultado do ano, mês a mês: do faturamento até o lucro que sobra de verdade', `<button class="btn" data-action="dreCsv">Baixar CSV</button><button class="btn" data-action="go" data-view="despesas">Ver despesas</button>`)}
+  ${avisoCobr()}
+  <div class="toolbar">${select('dre.ano', U.ano, anos.map(a => [a, a]), 'Ano')}
+    <label class="check" style="gap:8px">Imposto estimado sobre o faturamento (%) <input id="dre-imp" inputmode="decimal" value="${fmtIn(DB.config.impostoPct || 0)}" style="width:70px"></label><button class="btn btn-sm btn-soft" data-action="dreImposto">Aplicar</button></div>
+  ${keys.length ? `<div class="table-wrap livre"><table><thead><tr><th></th>${keys.map(k => `<th class="num">${MESES[+k.slice(5, 7) - 1].slice(0, 3)}</th>`).join('')}<th class="num">Total ${U.ano}</th></tr></thead><tbody>
+  ${L.map(([rot, f, t = '']) => `<tr class="${t.includes('total') ? 'total' : ''} ${t.includes('sub') ? 'sub' : ''}"><td>${t.includes('b') ? `<b style="font-weight:500">${rot}</b>` : rot}</td>${keys.map(k => cel(m[k], f, t)).join('')}${cel(soma, f, t)}</tr>`).join('')}
+  </tbody></table></div>` : '<div class="table-wrap livre"><table><tbody>' + vazioLinha(3, 'Sem movimento neste ano.') + '</tbody></table></div>'}
+  <p class="note">Faturamento e custo entram no mês da venda. Tarifas e fretes são os reais de cada pedido. "Outras cobranças do ML" são parcelamento, Mercado Pago, publicidade e outras taxas da fatura que não estão na tarifa de venda. Consumo próprio e perdas aparecem a custo, depois do resultado operacional, para não distorcer o custo das mercadorias vendidas.</p></div>`;
+}
+
+/* ---------- Fluxo de caixa ---------- */
+function vFluxo() {
+  mktFin();
+  const U = UI.fluxo, m = finBase();
+  const anos = [...new Set([hojeISO().slice(0, 4), ...Object.keys(m).map(k => k.slice(0, 4))])].sort().reverse();
+  const keys = Object.keys(m).filter(k => k.startsWith(U.ano)).sort();
+  let acum = 0;
+  const linhas = keys.map(k => {
+    const x = m[k], c = contasMes(x), ml = x.fatMl - x.taxas - x.fretes, ent = ml + x.recebidoFis, sai = x.compras + x.despTot + x.mkt + x.outrasMl + c.imp;
+    acum += ent - sai; return { k, x, ml, ent, sai, saldo: ent - sai, acum, imp: c.imp };
+  });
+  const T = linhas.reduce((t, l) => ({ ml: t.ml + l.ml, fis: t.fis + l.x.recebidoFis, ent: t.ent + l.ent, comp: t.comp + l.x.compras, desp: t.desp + l.x.despTot, ml2: t.ml2 + l.x.mkt + l.x.outrasMl, imp: t.imp + l.imp, sai: t.sai + l.sai, saldo: t.saldo + l.saldo }), { ml: 0, fis: 0, ent: 0, comp: 0, desp: 0, ml2: 0, imp: 0, sai: 0, saldo: 0 });
+  const sv = statsVF(), aReceber = sum(DB.vendasFisicas.filter(v => tipoVF(v) === 'venda'), v => Math.max(0, (sv[v.id]?.venda || 0) - (v.pago || 0)));
+  return `<div class="page">${pageHead('Fluxo de caixa', 'Quanto entrou e quanto saiu em cada mês (estimado), e o saldo que sobra')}
+  ${avisoCobr()}
+  <div class="toolbar">${select('fluxo.ano', U.ano, anos.map(a => [a, a]), 'Ano')}</div>
+  ${linhas.length ? `<div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Vendas ML (líq. de tarifa e frete)</th><th class="num">Vendas físicas recebidas</th><th class="num">Entradas</th><th class="num">Compras de mercadoria</th><th class="num">Despesas</th><th class="num">Cobranças do ML</th><th class="num">Saídas</th><th class="num">Saldo do mês</th><th class="num">Saldo acumulado</th></tr></thead><tbody>
+  ${linhas.map(l => `<tr><td>${MESES[+l.k.slice(5, 7) - 1]}</td><td class="num">${brl(l.ml)}</td><td class="num">${brl(l.x.recebidoFis)}</td><td class="num"><b style="font-weight:500">${brl(l.ent)}</b></td><td class="num">${brl(l.x.compras)}</td><td class="num">${brl(l.x.despTot + l.imp)}</td><td class="num">${brl(l.x.mkt + l.x.outrasMl)}</td><td class="num"><b style="font-weight:500">${brl(l.sai)}</b></td><td class="num ${l.saldo < 0 ? 'neg' : ''}"><b style="font-weight:500">${brl(l.saldo)}</b></td><td class="num ${l.acum < 0 ? 'neg' : ''}">${brl(l.acum)}</td></tr>`).join('')}
+  <tr class="total"><td>Total ${U.ano}</td><td class="num">${brl(T.ml)}</td><td class="num">${brl(T.fis)}</td><td class="num">${brl(T.ent)}</td><td class="num">${brl(T.comp)}</td><td class="num">${brl(T.desp + T.imp)}</td><td class="num">${brl(T.ml2)}</td><td class="num">${brl(T.sai)}</td><td class="num ${T.saldo < 0 ? 'neg' : ''}">${brl(T.saldo)}</td><td></td></tr>
+  </tbody></table></div>` : '<div class="table-wrap livre"><table><tbody>' + vazioLinha(3, 'Sem movimento neste ano.') + '</tbody></table></div>'}
+  <div class="card side-card" style="margin-top:18px"><div class="side-head"><h2>Ainda para entrar</h2></div><p style="margin:0">${brl(aReceber)} de vendas físicas pendentes. <button class="btn-link" data-action="go" data-view="fisicas">Ver →</button></p></div>
+  <p class="note">É uma estimativa: as vendas do ML entram no mês da venda (o ML libera o dinheiro dias depois), as compras entram no mês da data da compra, e as vendas físicas pelo valor já pago na data da venda. Compras com bonificação não entram. Serve para enxergar a tendência, não para fechar o extrato.</p></div>`;
+}
+
+/* ---------- Lucro por produto ---------- */
+function vRentabilidade() {
+  const U = UI.rent, m = finBase(), P = mapaProdutos(), st = statsProdutos(), pp = lucroPorProduto(U.periodo), q = norm(U.q);
+  let rows = Object.entries(pp).filter(([id, v]) => v.un && P[id] && (!q || norm(`${P[id].nome} ${P[id].sku} ${P[id].fabricante}`).includes(q))).map(([id, v]) => ({ id, p: P[id], ...v, margem: v.fat ? v.lucro / v.fat : null, disp: st[id]?.disp || 0, cob: v.un30 ? (st[id]?.disp || 0) / (v.un30 / 30) : null }));
+  const totalLucroPos = sum(rows.filter(r => r.lucro > 0), r => r.lucro);
+  let acum = 0;
+  [...rows].sort((a, b) => b.lucro - a.lucro).forEach(r => { if (r.lucro <= 0) { r.abc = '—'; return; } acum += r.lucro; r.abc = acum - r.lucro < totalLucroPos * 0.8 ? 'A' : acum - r.lucro < totalLucroPos * 0.95 ? 'B' : 'C'; });
+  if (U.soNeg) rows = rows.filter(r => r.lucro < 0);
+  const key = { nome: r => r.p.nome, un: r => r.un, fat: r => r.fat, custo: r => r.custo, taxas: r => r.taxas + r.fretes, lucro: r => r.lucro, margem: r => r.margem ?? -9, disp: r => r.disp, cob: r => r.cob ?? 9e9 }[U.ordem] || (r => r.lucro);
+  rows.sort((a, b) => { const x = key(a), y = key(b); const c = typeof x === 'string' ? x.localeCompare(y, 'pt-BR') : x - y; return U.dir === 'asc' ? c : -c; });
+  const T = rows.reduce((t, r) => ({ un: t.un + r.un, fat: t.fat + r.fat, custo: t.custo + r.custo, tf: t.tf + r.taxas + r.fretes, lucro: t.lucro + r.lucro }), { un: 0, fat: 0, custo: 0, tf: 0, lucro: 0 });
+  const th = (col, rot, num) => `<th class="${num ? 'num' : ''}" aria-sort="${U.ordem === col ? (U.dir === 'desc' ? 'descending' : 'ascending') : 'none'}"><button class="th-btn ${U.ordem === col ? 'on' : ''}" data-action="rentOrdenar" data-col="${col}">${rot}<span class="seta">${U.ordem === col ? (U.dir === 'desc' ? '↓' : '↑') : ''}</span></button></th>`;
+  const chipABC = a => a === 'A' ? '<span class="chip c-green">A</span>' : a === 'B' ? '<span class="chip c-yellow">B</span>' : a === 'C' ? '<span class="chip">C</span>' : '<span class="muted">—</span>';
+  return `<div class="page">${pageHead('Lucro por produto', 'Quanto cada produto realmente deixa (depois de custo, tarifa e frete) e quanto tempo o estoque dura')}
+  <div class="toolbar">${select('rent.periodo', U.periodo, opcoesPeriodo(m), 'Período')}${campoBusca('rent-q', 'rent.q', U.q, 'Buscar produto, SKU, fabricante...')}
+    <label class="check"><input type="checkbox" data-bind="rent.soNeg" ${U.soNeg ? 'checked' : ''}> Só os que dão prejuízo</label></div>
+  <div class="table-wrap livre"><table><thead><tr>${th('nome', 'Produto')}${th('un', 'Unid.', true)}${th('fat', 'Faturamento', true)}${th('custo', 'Custo', true)}${th('taxas', 'Tarifas + frete', true)}${th('lucro', 'Lucro', true)}${th('margem', 'Margem', true)}<th>Curva</th>${th('disp', 'Estoque', true)}${th('cob', 'Dura (dias)', true)}</tr></thead><tbody>
+  ${rows.slice(0, 300).map(r => `<tr><td class="prod"><div class="pn">${esc(r.p.nome)}</div><div class="hint">${esc(r.p.fabricante || '')}</div></td><td class="num">${r.un}</td><td class="num">${brl(r.fat)}</td><td class="num">${brl(r.custo)}</td><td class="num">${brl(r.taxas + r.fretes)}</td><td class="num ${r.lucro < 0 ? 'neg' : ''}"><b style="font-weight:500">${brl(r.lucro)}</b></td><td class="num ${r.lucro < 0 ? 'neg' : ''}">${pct(r.margem)}</td><td>${chipABC(r.abc)}</td><td class="num">${r.disp}</td><td class="num ${r.cob != null && r.cob < 15 && r.disp ? 'neg' : ''}">${r.cob != null ? Math.round(r.cob) : (r.disp ? '∞' : '—')}</td></tr>`).join('') || vazioLinha(10, 'Nenhuma venda neste período.')}
+  ${rows.length ? `<tr class="total"><td>Total (${rows.length} produtos)</td><td class="num">${T.un}</td><td class="num">${brl(T.fat)}</td><td class="num">${brl(T.custo)}</td><td class="num">${brl(T.tf)}</td><td class="num ${T.lucro < 0 ? 'neg' : ''}">${brl(T.lucro)}</td><td class="num">${pct(T.fat ? T.lucro / T.fat : null)}</td><td></td><td></td><td></td></tr>` : ''}
+  </tbody></table></div>
+  <p class="note">Curva A = os produtos que juntos dão 80% do lucro, B = até 95%, C = o resto. "Dura (dias)" é o estoque à venda dividido pelas vendas dos últimos 30 dias (vermelho = menos de 15 dias, hora de repor). Consumo próprio e ajustes de estoque não entram. Este lucro não desconta a publicidade nem as outras cobranças do ML, que são do mês inteiro (veja o DRE).</p></div>`;
+}
+
+/* ---------- Despesas ---------- */
 function vDespesas() {
-  const U = UI.despesas;
+  const U = UI.despesas, m = finBase();
   const meses = [...new Set([hojeISO().slice(0, 7), ...DB.despesas.filter(d => d.data).map(d => d.data.slice(0, 7))])].sort().reverse();
-  const anos = [...new Set(meses.map(m => m.slice(0, 4)))];
+  const anos = [...new Set(meses.map(k => k.slice(0, 4)))];
   const lista = DB.despesas.filter(d => filtroPeriodo(U.periodo, d.data)).sort((a, b) => (b.data || '').localeCompare(a.data || ''));
-  const porMes = {};
+  const porMes = {}, porCat = {};
   DB.despesas.forEach(d => { const k = (d.data || '').slice(0, 7) || 'sem data'; porMes[k] = (porMes[k] || 0) + (d.valor || 0); });
-  return `<div class="page">${pageHead('Despesas', 'Gastos da operação que entram no DRE', `<button class="btn btn-dark" data-action="novaDespesa">${ic('plus', 18)} Nova despesa</button>`)}
+  lista.forEach(d => { const c = d.categoria || 'Sem categoria'; porCat[c] = (porCat[c] || 0) + (d.valor || 0); });
+  const x = somaMeses(m, k => filtroPeriodo(U.periodo, k)), mlDoPeriodo = x.mkt + x.outrasMl;
+  return `<div class="page">${pageHead('Despesas', 'Gastos da operação que entram no DRE (as cobranças do ML vêm sozinhas, não precisa lançar)', `<button class="btn btn-dark" data-action="novaDespesa">${ic('plus', 18)} Nova despesa</button>`)}
   <div class="grid-side"><div>
-    <div class="toolbar">${select('despesas.periodo', U.periodo, [...meses.map(m => [m, nomeMes(m)]), ...anos.map(a => ['ano:' + a, 'Ano ' + a]), ['tudo', 'Todo o período']], 'Período')}</div>
-    <div class="table-wrap livre"><table><thead><tr><th>Nome</th><th>Data</th><th class="num">Valor</th><th></th></tr></thead><tbody>
-    ${lista.map(d => `<tr><td>${esc(d.nome)}</td><td class="muted">${fdata(d.data)}</td><td class="num">${brl(d.valor)}</td><td><div class="row-actions"><button class="ghost-ic" data-action="editarDespesa" data-id="${d.id}" aria-label="Editar">${ic('edit', 16)}</button></div></td></tr>`).join('') || vazioLinha(4, 'Nenhuma despesa neste período.')}
-    ${lista.length ? `<tr class="total"><td colspan="2">Total</td><td class="num">${brl(sum(lista, d => d.valor))}</td><td></td></tr>` : ''}
+    <div class="toolbar">${select('despesas.periodo', U.periodo, [...meses.map(k => [k, nomeMes(k)]), ...anos.map(a => ['ano:' + a, 'Ano ' + a]), ['tudo', 'Todo o período']], 'Período')}</div>
+    <div class="table-wrap livre"><table><thead><tr><th>Nome</th><th>Categoria</th><th>Data</th><th class="num">Valor</th><th></th></tr></thead><tbody>
+    ${lista.map(d => `<tr class="clic" data-action="editarDespesa" data-id="${d.id}"><td>${esc(d.nome)}</td><td class="muted">${esc(d.categoria || '—')}</td><td class="muted">${fdata(d.data)}</td><td class="num">${brl(d.valor)}</td><td><div class="row-actions"><button class="ghost-ic" data-action="editarDespesa" data-id="${d.id}" aria-label="Editar">${ic('edit', 16)}</button></div></td></tr>`).join('') || vazioLinha(5, 'Nenhuma despesa neste período. Lance embalagens, contador, impostos e o que mais sair do seu bolso.')}
+    ${lista.length ? `<tr class="total"><td colspan="3">Total</td><td class="num">${brl(sum(lista, d => d.valor))}</td><td></td></tr>` : ''}
     </tbody></table></div>
   </div>
-  <div class="card side-card"><div class="side-head"><h2>Por mês</h2></div>
+  <div><div class="card side-card"><div class="side-head"><h2>Por categoria</h2></div>
+    ${Object.keys(porCat).length ? `<ul class="mini-list">${Object.entries(porCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<li><span>${esc(k)}</span><b style="font-weight:500">${brl(v)}</b></li>`).join('')}</ul>` : '<p class="empty-note">Nenhuma despesa lançada</p>'}
+    <p class="hint" style="margin:10px 0 0">Cobradas pelo ML no período: <b>${brl(mlDoPeriodo)}</b> (já no DRE)</p></div>
+  <div class="card side-card" style="margin-top:18px"><div class="side-head"><h2>Por mês</h2></div>
     ${Object.keys(porMes).length ? `<ul class="mini-list">${Object.entries(porMes).sort((a, b) => b[0].localeCompare(a[0])).map(([k, v]) => `<li><span>${k === 'sem data' ? 'Sem data' : nomeMes(k)}</span><b style="font-weight:500">${brl(v)}</b></li>`).join('')}</ul>` : '<p class="empty-note">Nenhuma despesa lançada</p>'}
-  </div></div></div>`;
+  </div></div></div></div>`;
 }
 
 /* =========================================================
@@ -1752,7 +1960,7 @@ async function mktCarregar() {
   try { ML.mkt = await mlChamar('marketing'); ML.mktErro = ''; }
   catch (e) { ML.mkt = { ads: [], cobrancas: [] }; ML.mktErro = e.message; }
   ML.mktOk = true; ML.mktCarregando = false;
-  if (UI.view === 'marketing') render();
+  if (['marketing', 'dre', 'financeiro', 'fluxo', 'rentabilidade'].includes(UI.view)) render();
 }
 function vMarketing() {
   if (!ML.mktOk) {
@@ -2688,14 +2896,14 @@ function modalDespesa(id = null) {
   if (!d) return;
   abrirModal({
     titulo: id ? 'Editar despesa' : 'Nova despesa', largura: 520,
-    corpo: `<div class="form-grid">${campo('de-nome', 'Nome', inputTxt('de-nome', d.nome, 'placeholder="Ex.: Embalagens, anúncio, contador"'), 'full')}</div><div class="form-grid">${campo('de-valor', 'Valor', inputNum('de-valor', d.valor))}${campo('de-data', 'Data', inputData('de-data', d.data))}</div>`,
+    corpo: `<div class="form-grid">${campo('de-nome', 'Nome', inputTxt('de-nome', d.nome, 'placeholder="Ex.: Embalagens, anúncio, contador"'), 'full')}</div><div class="form-grid">${campo('de-valor', 'Valor', inputNum('de-valor', d.valor))}${campo('de-data', 'Data', inputData('de-data', d.data))}</div><div class="form-grid">${campo('de-cat', 'Categoria', `<input id="de-cat" list="dl-cat" value="${esc(d.categoria || '')}" autocomplete="off" placeholder="Escolha ou digite uma nova">${datalistLista('dl-cat', catsDespesa())}`, 'full')}</div>`,
     rodape: rodapePadrao('Salvar', id ? `<button class="btn btn-sm btn-danger left" data-action="excluirDespesa" data-id="${id}">Excluir</button>` : ''),
     onConfirm: () => {
       const nome = val('de-nome');
       const valor = parseNum(val('de-valor'));
       if (!nome) return erro('Informe o nome da despesa.');
       if (valor == null || Number.isNaN(valor)) return erro('Informe o valor.');
-      const dados = { nome, valor, data: val('de-data') || null };
+      const dados = { nome, valor, data: val('de-data') || null, categoria: val('de-cat') || null };
       if (id) Object.assign(d, dados); else DB.despesas.push({ id: uid(), ...dados });
       commit(id ? 'Despesa atualizada' : 'Despesa lançada');
     },
@@ -2727,7 +2935,7 @@ function fecharBusca() { const b = $('#busca-global'); b.value = ''; renderBusca
 /* =========================================================
    Renderização e navegação
    ========================================================= */
-const VIEWS = { marketing: vMarketing, hoje: vHoje, inicio: vInicio, produtos: vProdutos, estoque: vEstoque, compras: vCompras, vendas: vVendas, fisicas: vFisicas, encomendas: vEncomendas, dre: vDRE, despesas: vDespesas, config: vConfig };
+const VIEWS = { marketing: vMarketing, hoje: vHoje, inicio: vInicio, produtos: vProdutos, estoque: vEstoque, compras: vCompras, vendas: vVendas, fisicas: vFisicas, encomendas: vEncomendas, dre: vDRE, financeiro: vFinanceiro, fluxo: vFluxo, rentabilidade: vRentabilidade, despesas: vDespesas, config: vConfig };
 function render() {
   const a = document.activeElement;
   const id = a && a.id && $('#main').contains(a) ? a.id : null;
@@ -2997,6 +3205,15 @@ const ACOES = {
     const p = anuncioProduto(a); if (!p) return erro('Este anúncio não está vinculado a um produto.');
     const site = unidadesDisponiveis(p.id).length;
     confirmar('Enviar estoque ao ML', `Enviar <b>${site}</b> unidade(s) de <b>${esc(p.nome)}</b> para o anúncio <b>${esc((a.titulo || '').slice(0, 60))}</b>? Hoje o ML mostra ${a.qtd ?? '—'}.${site === 0 ? ' Com 0, o ML pausa o anúncio.' : ''}`, () => enviarEstoqueML([{ item_id: a.item_id, qtd: site }]), { texto: 'Enviar' });
+  },
+  rentOrdenar: el => { const U = UI.rent, c = el.dataset.col; U.dir = U.ordem === c && U.dir === 'desc' ? 'asc' : 'desc'; U.ordem = c; render(); },
+  dreImposto: () => { const n = parseNum(val('dre-imp')); if (Number.isNaN(n) || n < 0 || n > 60) return erro('Confira o percentual.'); DB.config.impostoPct = n || 0; commit(n ? `Imposto estimado: ${fmtIn(n)}%` : 'Imposto estimado removido'); },
+  dreCsv: () => {
+    const mm = finBase(), { keys, L, soma } = dreLinhas(UI.dre.ano, mm);
+    const f = (v, t) => v == null ? '' : (t && t.includes('pct') ? (v * 100).toFixed(1) : v.toFixed(2)).replace('.', ',');
+    const linhas = [['', ...keys.map(k => nomeMes(k)), `Total ${UI.dre.ano}`], ...L.map(([rot, fn, t = '']) => [rot, ...keys.map(k => f(fn(mm[k]), t)), f(fn(soma), t)])];
+    const blob = new Blob(['\ufeff' + linhas.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `dre-${UI.dre.ano}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   },
   conferencia: () => modalConferencia(),
   mlVincular: () => modalVincularAnuncios(),
