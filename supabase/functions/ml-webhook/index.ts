@@ -2,6 +2,16 @@ import { db, freteDe, getAccess, linhaAnuncio, linhaPedido } from "../_shared/ml
 
 // Notificações do Mercado Livre (tópico orders_v2). O ML não assina a chamada, então nada do corpo é confiado:
 // só lemos o número do pedido e buscamos os dados na API do ML com o nosso token.
+// Notificação no celular/computador (só push, sem e-mail) pela função bo-lembrete
+async function avisar(titulo: string, corpo: string) {
+  try {
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/bo-lembrete`, {
+      method: "POST", headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "content-type": "application/json" },
+      body: JSON.stringify({ action: "aviso", titulo, corpo }),
+    });
+  } catch (e) { console.error("aviso", e); }
+}
+
 async function processar(orderId: string, userIdNotificado: string) {
   const { token, userId } = await getAccess();
   if (String(userIdNotificado) !== String(userId)) return;
@@ -10,8 +20,13 @@ async function processar(orderId: string, userIdNotificado: string) {
   const o = await r.json();
   if (String(o.seller?.id) !== String(userId)) return;
   const linha = linhaPedido(o);
+  const { data: antes } = await db.from("ml_orders").select("status").eq("id", linha.id).maybeSingle();
   const { error } = await db.from("ml_orders").upsert(linha);
   if (error) throw error;
+  // deno-lint-ignore no-explicit-any
+  const it: any = linha.items?.[0], q = it?.qty ?? 1, nome = String(it?.title ?? "produto").slice(0, 60);
+  if (!antes && linha.status === "paid") await avisar("Nova venda no Mercado Livre", `${q}× ${nome} · R$ ${Number(it?.unit_price ?? 0).toFixed(2).replace(".", ",")}`);
+  else if (antes && antes.status !== "cancelled" && linha.status === "cancelled") await avisar("Pedido cancelado no Mercado Livre", `${q}× ${nome}`);
   if (linha.shipping_id) {
     try { await db.from("ml_orders").update(await freteDe(token, linha.shipping_id)).eq("id", linha.id); }
     catch (e) { console.error("frete", e); }

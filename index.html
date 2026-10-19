@@ -271,7 +271,8 @@ td.empty-cell{padding:40px;text-align:center;color:var(--faint);white-space:norm
 .inline-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
 .inline-form input{height:32px;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:0 10px;outline:none;width:160px}
 .sub-title{font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:18px 0 10px}
-.cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px}
+.cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px;align-items:start}
+.cfg-col{display:flex;flex-direction:column;gap:22px;min-width:0}
 .cfg-actions{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
 .counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:14px 0 18px}
 
@@ -360,7 +361,6 @@ tr.sub.dr{display:table-row}
   <div class="top-actions">
     <span class="save-status" id="save-status">Salvo neste navegador</span>
     <button class="icon-btn notif-btn" id="btn-notif" data-action="notif" aria-label="Notificações" aria-haspopup="true"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 0 0 4 0"/></svg><span class="notif-badge" id="notif-badge" hidden></span></button>
-    <button class="btn btn-sm btn-soft" data-action="exportar">Baixar backup</button>
     <button class="icon-btn" data-action="go" data-view="config" aria-label="Dados e backup"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </div>
 </header>
@@ -742,7 +742,7 @@ function renderNav() {
   const fixada = $('#sidebar').classList.contains('fixada');
   $('#sidebar').innerHTML = `<div class="pin-row"><button class="btn-pin ${fixada ? 'fixada' : ''}" data-action="pinMenu" type="button" aria-label="Fixar menu aberto" aria-pressed="${fixada}" title="${fixada ? 'Desafixar menu' : 'Fixar menu aberto'}"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v3.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg></button></div>
   <nav class="nav" aria-label="Menu principal">${NAV.map(s => `<div class="nav-sec">${s.sec}</div>${s.itens.map(([k, l, i]) => `<button class="nav-item ${UI.view === k ? 'on' : ''}" data-action="go" data-view="${k}" ${UI.view === k ? 'aria-current="page"' : ''}>${ic(i)}<span>${l}</span>${badges[k] != null ? `<span class="badge">${badges[k]}</span>` : ''}</button>`).join('')}`).join('')}</nav>
-  <div class="nav-foot"><button class="nav-item ${UI.view === 'config' ? 'on' : ''}" data-action="go" data-view="config">${ic('database')}<span>Dados e backup</span></button><button class="nav-item" data-action="sair">${ic('x')}<span>Sair</span></button></div>`;
+  <div class="nav-foot"><button class="nav-item" data-action="sair">${ic('x')}<span>Sair</span></button></div>`;
 }
 
 /* =========================================================
@@ -1427,7 +1427,7 @@ function vConfig() {
   const c = DB.config;
   const kb = Math.round(JSON.stringify(DB).length / 1024);
   return `<div class="page">${pageHead('Dados e backup', 'Os dados ficam salvos neste navegador. Baixe um backup de vez em quando.')}
-  <div class="cfg-grid">
+  <div class="cfg-grid"><div class="cfg-col">
     <div class="card side-card">
       <div class="side-head"><h2>Seus dados</h2></div>
       <div class="counts">
@@ -1450,7 +1450,7 @@ function vConfig() {
       </div>
       ${armazenamentoOk ? '' : '<p class="neg" style="margin-top:14px">Este navegador está bloqueando o armazenamento local. As alterações serão perdidas ao fechar a página, a menos que você baixe um backup.</p>'}
     </div>
-    ${cardLembrete()}
+    ${cardLembrete()}</div>
     ${cardML()}
   </div></div>`;
 }
@@ -1492,7 +1492,7 @@ function cardML() {
       </div>
       <p class="hint" style="margin:8px 0 0">Anúncios, fretes, envios, reclamações e perguntas atualizam sozinhos (ao abrir o site, a cada poucos minutos e pelo agendador no servidor).</p>${ML.autoMsg ? `<p class="hint" style="margin:8px 0 0">${esc(ML.autoMsg)}</p>` : ''}${ML.adsMsg ? `<p class="hint" style="margin:4px 0 0">${esc(ML.adsMsg)}</p>` : ''}${mlDivergencias()}${tabela}`;
   }
-  return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Mercado Livre</h2></div>${corpo}</div>`;
+  return `<div class="card side-card"><div class="side-head"><h2>Mercado Livre</h2></div>${corpo}</div>`;
 }
 
 /* ---------- Lembrete semanal de conferência (e-mail + notificação no navegador/celular) ---------- */
@@ -1504,7 +1504,7 @@ function cardLembrete() {
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.matchMedia('(display-mode: standalone)').matches;
   const estado = !suporte ? 'Este navegador não recebe notificações' : perm === 'granted' ? 'Ativadas neste aparelho' : perm === 'denied' ? 'Bloqueadas no navegador' : 'Ainda não ativadas';
   return `<div class="card side-card"><div class="side-head"><h2>Notificações</h2></div>
-    <p class="hint" style="margin:0 0 12px">Todo dia às 11h: quantos produtos enviar hoje e até que horas. Todo sábado de manhã: a conferência do estoque. Também avisa quando chegar reclamação ou pergunta no ML. Ative em cada aparelho (computador e celular).</p>
+    <p class="hint" style="margin:0 0 12px">Receba neste aparelho todos os avisos do site: vendas, cancelamentos, reclamações, perguntas e o que enviar hoje.</p>
     <div class="stat" style="margin-bottom:12px"><span>Notificações neste aparelho</span><b>${estado}</b></div>
     <div class="cfg-actions"><button class="btn btn-dark" data-action="lembreteAtivar" ${suporte ? '' : 'disabled'}>Ativar notificações neste aparelho</button>
       <button class="btn" data-action="lembreteTeste">Enviar teste (e-mail + notificação)</button></div>

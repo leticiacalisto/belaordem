@@ -44,11 +44,11 @@ async function destinatarios(): Promise<string[]> {
   return (data ?? []).map((x: { email: string }) => x.email);
 }
 
-async function notificar(titulo: string, corpo: string, html: string) {
+async function notificar(titulo: string, corpo: string, html: string, comEmail = true) {
   const saida: Record<string, unknown> = { emails: [], push: { enviados: 0, removidos: 0, erros: [] as string[] } };
   const chave = Deno.env.get("RESEND_API_KEY");
   const para = await destinatarios();
-  for (const p of para) {
+  for (const p of comEmail ? para : []) {
     if (!chave) { (saida.emails as string[]).push(`${p}: sem RESEND_API_KEY`); continue; }
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
     const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
     const interno = !!bearer && bearer === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (action === "aviso" && interno) {     // só chamado pelo agendador do próprio sistema
-      return json(await notificar(String(body.titulo ?? "Bela Ordem"), String(body.corpo ?? ""), caixaEmail(String(body.titulo ?? "Bela Ordem"), `<p>${String(body.corpo ?? "")}</p>`)));
+      return json(await notificar(String(body.titulo ?? "Bela Ordem"), String(body.corpo ?? ""), "", false));
     }
     if (action === "envios_dia") {
       const { data } = await db.from("bo_kv").select("valor").eq("chave", "ultimo_envios_dia").maybeSingle();
