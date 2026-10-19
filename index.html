@@ -896,7 +896,7 @@ function vEstoque() {
     thead = '<th>Qtd</th><th>Status</th><th class="num">SKU</th><th>Produto</th><th>Fornecedor</th><th class="num">Custo</th><th class="num">V. Venda</th><th>NF</th><th>Compra</th><th>Validade</th><th>Lote</th><th>D. Venda</th><th></th>';
     rows = vis.map((g, k) => { const i = g.it; return `<tr>${cQtd(g)}<td>${chipStatus(i.status)}</td>${cSku(i)}${celulaProduto(i, P)}<td>${chip('fornecedor', i.fornecedor)}</td><td class="num">${brl(i.custo)}</td><td class="num">${brl(i.venda)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td class="muted">${fdata(i.dVenda)}</td><td><div class="row-actions">${bEdit(k)}</div></td></tr>`; });
   }
-  return `<div class="page">${pageHead('Estoque', 'Cada linha é uma unidade (ou um lote de unidades iguais)', `<button class="btn btn-dark" data-action="novaCompra">${ic('plus', 18)} Registrar compra</button>`)}
+  return `<div class="page">${pageHead('Estoque', 'Cada linha é uma unidade (ou um lote de unidades iguais)', `<button class="btn" data-action="conferencia">Conferência de estoque</button> <button class="btn btn-dark" data-action="novaCompra">${ic('plus', 18)} Registrar compra</button>`)}
   ${kpiEstoque}
   ${tabs('estoque.tab', U.tab, [['avenda', 'À venda', nA], ['separado', 'Separado', nS], ['vendido', 'Vendidos', DB.estoque.length - nA], ['geral', 'Geral', DB.estoque.length]])}
   <div class="toolbar">${campoBusca('est-q', 'estoque.q', U.q, 'Buscar produto, SKU, NF, cliente...')}
@@ -1396,6 +1396,7 @@ function notifAdd(tipo, texto, extra = {}) {
 }
 function pendencias() {
   const out = [], add = (nivel, titulo, detalhe, acao, botao) => out.push({ nivel, titulo, detalhe, acao, botao });
+  if (conferenciaPendente()) add('media', 'Conferência de estoque da semana', DB.config.ultimaConferencia ? `Última conferência em ${fdata(DB.config.ultimaConferencia)}. Conte a prateleira e compare com o sistema.` : 'Você ainda não fez nenhuma conferência. Conte a prateleira e compare com o sistema.', 'conferencia', 'Conferir');
   if (ML.status && !ML.status.connected) add('alta', 'Mercado Livre desconectado', 'Sem conexão, as vendas novas não chegam. Reconecte em Dados e backup.', 'go:config', 'Conectar');
   if (ML.autoMsg && ML.autoMsg.startsWith('Sincronização automática falhou')) add('alta', 'Sincronização com o ML falhou', ML.autoMsg, 'go:config', 'Ver');
   if (ML.pedidos?.length) {
@@ -2257,6 +2258,96 @@ function modalEditarCompra(chave) {
 }
 
 /* ---------- Produto ---------- */
+/* ---------- Conferência de estoque ---------- */
+const CONF_LS = 'bo_conf';
+function conferenciaPendente() {
+  const u = DB.config.ultimaConferencia;
+  return !u || (Date.now() - new Date(u + 'T12:00:00').getTime()) / 864e5 >= 6;
+}
+function modalConferencia() {
+  const st = statsProdutos(), P = DB.produtos;
+  let prog = {}; try { prog = JSON.parse(localStorage.getItem(CONF_LS) || '{}'); } catch (_) { /* sem cache */ }
+  const salvarProg = () => { try { localStorage.setItem(CONF_LS, JSON.stringify(prog)); } catch (_) { /* sem cache */ } };
+  const ps = P.filter(p => st[p.id].disp + st[p.id].sep > 0).sort((a, b) => (a.sku ?? 1e9) - (b.sku ?? 1e9));
+  const esp = p => st[p.id].disp + st[p.id].sep;
+  const linha = p => `<tr data-pid="${p.id}"><td class="num muted">${p.sku ?? '—'}</td><td class="prod"><div class="pn">${esc(p.nome)}</div><div class="hint">${esc(p.fabricante || '')}</div></td>
+    <td class="num"><b>${esp(p)}</b>${st[p.id].sep ? `<div class="hint">${st[p.id].sep} separado</div>` : ''}</td>
+    <td><input class="cf-n" type="number" min="0" inputmode="numeric" value="${esc(prog[p.id] ?? '')}" style="width:78px" aria-label="Contado: ${esc(p.nome)}"></td>
+    <td class="cf-s"></td><td><button class="btn btn-sm btn-soft cf-ok">Confere</button></td></tr>`;
+  const corpo = `<p class="muted" style="margin:0 0 10px">Conte o que está na prateleira (inclui os separados: vendidos e ainda não enviados). Aperte "Confere" quando bater ou digite a quantidade contada. O que você não preencher fica como está. O progresso fica salvo neste aparelho.</p>
+    <div class="toolbar"><span id="cf-prog" class="chip"></span></div>
+    <div class="table-wrap" style="max-height:56vh;overflow:auto"><table><thead><tr><th class="num">SKU</th><th>Produto</th><th class="num">Sistema</th><th>Contado</th><th></th><th></th></tr></thead><tbody id="cf-corpo">${ps.map(linha).join('')}</tbody></table></div>`;
+  const atualizar = () => {
+    let feitos = 0, difs = 0;
+    for (const tr of $$('#cf-corpo tr')) {
+      const p = P.find(x => x.id === tr.dataset.pid), v = tr.querySelector('.cf-n').value.trim(), c = tr.querySelector('.cf-s');
+      if (v === '') { c.innerHTML = ''; continue; }
+      feitos++;
+      const d = parseInt(v, 10) - esp(p);
+      if (d === 0) c.innerHTML = '<span class="chip c-green">ok</span>';
+      else { difs++; c.innerHTML = `<span class="chip ${d < 0 ? 'c-red' : 'c-orange'}">${d > 0 ? '+' : ''}${d}</span>`; }
+    }
+    $('#cf-prog').textContent = `${feitos} de ${ps.length} conferidos · ${difs} com diferença`;
+  };
+  abrirModal({ titulo: 'Conferência de estoque', corpo, largura: 880, rodape: rodapePadrao('Finalizar conferência'), onConfirm: () => finalizarConferencia(ps, esp) });
+  const raiz = $('#cf-corpo');
+  raiz.addEventListener('input', e => {
+    if (!e.target.classList.contains('cf-n')) return;
+    const pid = e.target.closest('tr').dataset.pid;
+    if (e.target.value.trim() === '') delete prog[pid]; else prog[pid] = e.target.value;
+    salvarProg(); atualizar();
+  });
+  raiz.addEventListener('click', e => {
+    const b = e.target.closest('.cf-ok'); if (!b) return;
+    const tr = b.closest('tr'), p = P.find(x => x.id === tr.dataset.pid);
+    tr.querySelector('.cf-n').value = esp(p); prog[p.id] = String(esp(p)); salvarProg(); atualizar();
+  });
+  atualizar();
+}
+function finalizarConferencia(ps, esp) {
+  const linhas = [];
+  for (const tr of $$('#cf-corpo tr')) {
+    const v = tr.querySelector('.cf-n').value.trim(); if (v === '') continue;
+    const p = ps.find(x => x.id === tr.dataset.pid), n = parseInt(v, 10);
+    if (!(n >= 0)) return erro(`${p.nome}: quantidade inválida.`);
+    linhas.push({ p, n, d: n - esp(p) });
+  }
+  if (!linhas.length) return erro('Preencha ao menos um item.');
+  const difs = linhas.filter(x => x.d !== 0), falt = difs.filter(x => x.d < 0), sobr = difs.filter(x => x.d > 0);
+  const msg = `${linhas.length} produto(s) conferido(s), ${linhas.length - difs.length} sem diferença.`
+    + (falt.length ? `<br><br><b>Faltas</b> (vão para "Ajuste de estoque", para você revisar):<br>${falt.map(x => `${esc(x.p.nome)}: ${x.d}`).join('<br>')}` : '')
+    + (sobr.length ? `<br><br><b>Sobras</b> (entram como bonificação, custo 0):<br>${sobr.map(x => `${esc(x.p.nome)}: +${x.d}`).join('<br>')}` : '');
+  confirmar('Finalizar conferência', msg, () => aplicarConferencia(difs), { texto: 'Aplicar' });
+}
+function aplicarConferencia(difs) {
+  const hoje = hojeISO();
+  let vf = DB.vendasFisicas.find(v => (v.pessoa || '').startsWith('Ajuste de estoque'));
+  if (!vf) { vf = { id: uid(), pessoa: 'Ajuste de estoque (a identificar)', pago: 0, data: hoje }; DB.vendasFisicas.push(vf); }
+  let nf = 0, ns = 0;
+  for (const { p, d } of difs) {
+    const livres = unidadesDisponiveis(p.id);
+    if (d < 0) {
+      const n = Math.min(-d, livres.length);
+      for (const u of [...livres].sort((a, b) => (b.dCompra || '').localeCompare(a.dCompra || '')).slice(0, n)) {
+        Object.assign(u, { status: 'vendido', unid: 0, dVenda: hoje, vendaFisica: vf.id, venda: null, taxa: 0, frete: 0, mlPedido: null });
+      }
+      nf += n;
+    } else {
+      const modelo = livres[0] || DB.estoque.filter(i => i.produto === p.id).sort((a, b) => (b.dCompra || '').localeCompare(a.dCompra || ''))[0];
+      for (let k = 0; k < d; k++) {
+        const base = modelo ? { ...modelo } : { produto: p.id, venda: null, taxa: null, frete: null };
+        delete base.nfCompra;
+        DB.estoque.push({ ...base, id: uid(), fornecedor: 'Bonificação', custo: 0, nf: null, lote: null, validade: null, dCompra: hoje, status: 'avenda', unid: 1, dVenda: null, vendaFisica: null, mlPedido: null });
+      }
+      ns += d;
+    }
+  }
+  DB.config.ultimaConferencia = hoje;
+  try { localStorage.removeItem(CONF_LS); } catch (_) { /* sem cache */ }
+  recalcPendencias();
+  commit(`Conferência concluída: ${plural(nf, 'baixa', 'baixas')} e ${plural(ns, 'sobra', 'sobras')}`);
+}
+
 function modalProduto(id = null) {
   const p = id ? DB.produtos.find(x => x.id === id) : { nome: '', sku: null, fabricante: '', tipos: [], ncm: '', ean: '' };
   if (!p) return;
@@ -2691,9 +2782,11 @@ const ACOES = {
   notifAcao: el => {
     $('#notif-panel').hidden = true; const a = el.dataset.acao;
     if (a === 'conferir') { if (!ML.pedidos) return go('config'); return modalConferirML(); }
+    if (a === 'conferencia') return modalConferencia();
     if (a.startsWith('go:')) go(a.slice(3));
   },
   hojeDia: el => { UI.hoje.data = el.dataset.dia; render(); },
+  conferencia: () => modalConferencia(),
   mlVincular: () => modalVincularAnuncios(),
   mlMarcarBonif: () => $$('.ml-inc[data-bonif]').forEach(c => { c.checked = true; }),
   mlConectar: async () => {
