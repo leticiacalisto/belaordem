@@ -1,4 +1,4 @@
-import { db, freteDe, getAccess, linhaPedido } from "../_shared/ml.ts";
+import { db, freteDe, getAccess, linhaAnuncio, linhaPedido } from "../_shared/ml.ts";
 
 // Notificações do Mercado Livre (tópico orders_v2). O ML não assina a chamada, então nada do corpo é confiado:
 // só lemos o número do pedido e buscamos os dados na API do ML com o nosso token.
@@ -29,6 +29,17 @@ async function processarEnvio(shippingId: string, userIdNotificado: string) {
   for (const o of ped!) await db.from("ml_orders").update(dados).eq("id", o.id);
 }
 
+// Tópico items: o anúncio mudou no ML (preço, estoque, status). Só atualiza os que já conhecemos.
+async function processarAnuncio(itemId: string, userIdNotificado: string) {
+  const { token, userId } = await getAccess();
+  if (String(userIdNotificado) !== String(userId)) return;
+  const { data: ja } = await db.from("ml_anuncios").select("item_id").eq("item_id", itemId).maybeSingle();
+  const linha = await linhaAnuncio(token, itemId);
+  if (!ja && linha.status !== "active" && linha.status !== "paused") return;
+  const { error } = await db.from("ml_anuncios").upsert(linha);
+  if (error) throw error;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("ok");
   let b: any = null;
@@ -43,6 +54,11 @@ Deno.serve(async (req) => {
   if (e && b?.topic === "shipments") {
     // deno-lint-ignore no-explicit-any
     (globalThis as any).EdgeRuntime?.waitUntil(processarEnvio(e[1], String(b.user_id)).catch((x) => console.error(x)));
+  }
+  const it = /^\/items\/(MLB\d+)$/.exec(String(b?.resource ?? ""));
+  if (it && b?.topic === "items") {
+    // deno-lint-ignore no-explicit-any
+    (globalThis as any).EdgeRuntime?.waitUntil(processarAnuncio(it[1], String(b.user_id)).catch((x) => console.error(x)));
   }
   return new Response("ok");
 });

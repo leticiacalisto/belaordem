@@ -141,3 +141,25 @@ export async function freteDe(token: string, shippingId: number) {
     frete_em: new Date().toISOString(),
   };
 }
+
+// Linha da tabela ml_anuncios a partir de um anúncio (preço, tipo, taxa vigente, quantidade e status)
+export async function linhaAnuncio(token: string, id: string) {
+  const h = { Authorization: `Bearer ${token}` };
+  const r = await fetch(`https://api.mercadolibre.com/items/${id}?attributes=id,title,price,available_quantity,sold_quantity,listing_type_id,category_id,status,seller_custom_field,attributes,shipping,variations`, { headers: h });
+  if (!r.ok) throw new Error(`ML item ${id}: ${r.status}`);
+  const it = await r.json();
+  let taxaValor: number | null = null;
+  try {
+    const f = await fetch(`https://api.mercadolibre.com/sites/MLB/listing_prices?price=${it.price}&listing_type_id=${it.listing_type_id}&category_id=${it.category_id}`, { headers: h });
+    if (f.ok) { const j = await f.json(); const v = Number((Array.isArray(j) ? j[0] : j)?.sale_fee_amount ?? NaN); if (!Number.isNaN(v)) taxaValor = v; }
+  } catch (_) { /* segue sem taxa */ }
+  // deno-lint-ignore no-explicit-any
+  const sku = it.seller_custom_field ?? (it.attributes ?? []).find((a: any) => a.id === "SELLER_SKU")?.value_name ?? null;
+  return {
+    item_id: it.id, titulo: it.title, sku, preco: it.price, tipo: it.listing_type_id, categoria: it.category_id,
+    taxa_valor: taxaValor, taxa_pct: taxaValor != null && it.price ? taxaValor / it.price : null,
+    frete_gratis: it.shipping?.free_shipping ?? null, logistica: it.shipping?.logistic_type ?? null,
+    qtd: it.available_quantity ?? null, vendidos: it.sold_quantity ?? null, status: it.status,
+    tem_variacoes: (it.variations ?? []).length > 0, atualizado: new Date().toISOString(),
+  };
+}

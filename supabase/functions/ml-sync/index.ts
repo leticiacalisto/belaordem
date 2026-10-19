@@ -323,6 +323,25 @@ async function precoMl(itemId: string, preco: number) {
   return { item_id: itemId, ...upd };
 }
 
+// Perguntas sem resposta e reclamações abertas (só contagem), para o aviso "Para fazer agora"
+async function pendenciasMl() {
+  const { token, userId } = await getAccess();
+  const h = { Authorization: `Bearer ${token}` };
+  const erros: string[] = [];
+  let perguntas: number | null = null, reclamacoes: number | null = null;
+  try {
+    const r = await fetch(`https://api.mercadolibre.com/questions/search?seller_id=${userId}&status=UNANSWERED&limit=1`, { headers: h });
+    const j = await r.json();
+    if (r.ok) perguntas = Number(j.total ?? j.paging?.total ?? (j.questions ?? []).length ?? 0); else erros.push(`perguntas ${r.status}`);
+  } catch (e) { erros.push(`perguntas ${(e as Error).message}`); }
+  try {
+    const r = await fetch(`https://api.mercadolibre.com/post-purchase/v1/claims/search?status=opened&limit=1`, { headers: h });
+    const j = await r.json();
+    if (r.ok) reclamacoes = Number(j.paging?.total ?? (j.data ?? []).length ?? 0); else erros.push(`reclamacoes ${r.status}`);
+  } catch (e) { erros.push(`reclamacoes ${(e as Error).message}`); }
+  return { perguntas, reclamacoes, erros };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (!(await autenticar(req))) return json({ error: "não autorizado" }, 401);
@@ -358,6 +377,7 @@ Deno.serve(async (req) => {
     if (action === "fretes") return json(await fretes(Math.min(Number(body.limite) || 60, 100)));
     if (action === "envios") return json(await envios(Math.min(Number(body.limite) || 40, 80)));
     if (action === "anuncios") return json(await anuncios());
+    if (action === "pendencias_ml") return json(await pendenciasMl());
     if (action === "anuncio_status") return json(await statusAnuncio(String(body.item_id), String(body.status)));
     if (action === "preco_ml") return json(await precoMl(String(body.item_id), Number(body.preco)));
     if (action === "anuncios_list") {
