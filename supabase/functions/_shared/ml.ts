@@ -136,6 +136,7 @@ export async function freteDe(token: string, shippingId: number) {
   return {
     frete_vendedor: cj?.senders?.[0]?.cost ?? null,
     envio_status: ej?.status ?? null,
+    envio_sub: ej?.substatus ?? null,
     envio_tipo: ej?.logistic_type ?? ej?.logistic?.type ?? null,
     frete_em: new Date().toISOString(),
   };

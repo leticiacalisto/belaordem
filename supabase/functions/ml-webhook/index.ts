@@ -18,6 +18,17 @@ async function processar(orderId: string, userIdNotificado: string) {
   }
 }
 
+// Tópico shipments: o envio mudou de situação (pronto, coletado, enviado, entregue...). Acha o pedido pelo shipping_id e atualiza.
+async function processarEnvio(shippingId: string, userIdNotificado: string) {
+  const { token, userId } = await getAccess();
+  if (String(userIdNotificado) !== String(userId)) return;
+  const { data: ped, error } = await db.from("ml_orders").select("id").eq("shipping_id", Number(shippingId));
+  if (error) throw error;
+  if (!(ped ?? []).length) return;     // envio de um pedido que ainda não chegou: o orders_v2 cuida disso
+  const dados = await freteDe(token, Number(shippingId));
+  for (const o of ped!) await db.from("ml_orders").update(dados).eq("id", o.id);
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("ok");
   let b: any = null;
@@ -27,6 +38,11 @@ Deno.serve(async (req) => {
     // o ML exige resposta rápida: responde já e termina o trabalho em segundo plano
     // deno-lint-ignore no-explicit-any
     (globalThis as any).EdgeRuntime?.waitUntil(processar(m[1], String(b.user_id)).catch((e) => console.error(e)));
+  }
+  const e = /^\/shipments\/(\d+)$/.exec(String(b?.resource ?? ""));
+  if (e && b?.topic === "shipments") {
+    // deno-lint-ignore no-explicit-any
+    (globalThis as any).EdgeRuntime?.waitUntil(processarEnvio(e[1], String(b.user_id)).catch((x) => console.error(x)));
   }
   return new Response("ok");
 });

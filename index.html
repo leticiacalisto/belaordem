@@ -520,15 +520,33 @@ function statusPgto(pago, venda) {
 }
 const mapaProdutos = () => Object.fromEntries(DB.produtos.map(p => [p.id, p]));
 const mapaVF = () => Object.fromEntries(DB.vendasFisicas.map(v => [v.id, v]));
+/* Separado = vendido no ML, mas o envio ainda não saiu: a unidade continua fisicamente aqui.
+   Físico real = à venda + separado. O status do envio vem do ML (webhook shipments + rotina que consulta os envios em aberto). */
+const ENVIO_SAIU = ['dropped_off', 'picked_up', 'in_hub', 'in_transit', 'at_the_door'];
+function envioAberto(o) {
+  if (!o || (o.status !== 'paid' && o.status !== 'partially_refunded')) return false;
+  if (o.date_created < new Date(Date.now() - 45 * 864e5).toISOString()) return false;
+  const s = o.envio_status;
+  if (s === 'pending' || s === 'handling') return true;
+  return s === 'ready_to_ship' && !ENVIO_SAIU.includes(o.envio_sub || '');
+}
+function separadosIds() {
+  const abertos = new Set((ML.pedidos || []).filter(envioAberto).map(o => o.id));
+  const ids = new Set();
+  if (abertos.size) for (const u of DB.estoque) if (u.status === 'vendido' && u.mlPedido && abertos.has(u.mlPedido)) ids.add(u.id);
+  return ids;
+}
 function statsProdutos() {
+  const SEPARADOS = separadosIds();
   const m = {};
-  for (const p of DB.produtos) m[p.id] = { disp: 0, vend: 0, n: 0, sc: 0, cc: 0, sv: 0, cv: 0, sm: 0, cm: 0 };
+  for (const p of DB.produtos) m[p.id] = { disp: 0, sep: 0, vend: 0, n: 0, sc: 0, cc: 0, sv: 0, cv: 0, sm: 0, cm: 0 };
   for (const i of DB.estoque) {
     const s = m[i.produto];
     if (!s) continue;
     s.n++;
     s.disp += i.unid || 0;
     if (i.status === 'vendido') s.vend++;
+    if (SEPARADOS.has(i.id)) s.sep++;
     if (i.custo != null) { s.sc += i.custo; s.cc++; }
     if (i.venda != null) {
       s.sv += i.venda; s.cv++;
@@ -809,14 +827,14 @@ function vProdutos() {
   let corpo;
   if (U.tab === 'tabela') {
     const vis = ps.slice(0, U.limite);
-    corpo = `<div class="table-wrap"><table class="tb-prod"><thead><tr>${th('sku', 'SKU', true)}${th('nome', 'Nome')}${th('fab', 'Fabricante')}${th('cat', 'Categoria')}${th('disp', 'Disp.', true, 'Disponível: ordenar por estoque disponível')}${th('vend', 'Vend.', true, 'Vendidos: ordenar por unidades vendidas')}${th('custo', 'Custo', true, 'Custo médio')}${th('venda', 'Venda', true, 'Valor de venda médio')}${th('margem', 'Margem', true, 'Margem média')}${th('ncm', 'NCM')}${th('ean', 'EAN')}<th></th></tr></thead><tbody>
+    corpo = `<div class="table-wrap"><table class="tb-prod"><thead><tr>${th('sku', 'SKU', true)}${th('nome', 'Nome')}${th('fab', 'Fabricante')}${th('cat', 'Categoria')}${th('disp', 'Disp.', true, 'Disponível: ordenar por estoque disponível')}<th class="num" title="Vendidos no ML e ainda não enviados (estão aqui fisicamente)">Sep.</th><th class="num" title="Físico real = disponível + separado">Físico</th>${th('vend', 'Vend.', true, 'Vendidos: ordenar por unidades vendidas')}${th('custo', 'Custo', true, 'Custo médio')}${th('venda', 'Venda', true, 'Valor de venda médio')}${th('margem', 'Margem', true, 'Margem média')}${th('ncm', 'NCM')}${th('ean', 'EAN')}<th></th></tr></thead><tbody>
     ${vis.length ? vis.map(p => {
       const s = st[p.id];
       return `<tr><td class="num muted">${p.sku ?? '—'}</td><td class="prod"><div class="pn">${esc(p.nome)}</div></td><td>${chip('fabricante', p.fabricante)}</td><td><div class="chips">${(p.tipos || []).map(t => chip('tipo', t)).join('')}</div></td>
-      <td class="num"><b style="color:${s.disp ? 'var(--text)' : 'var(--faint)'}">${s.disp}</b></td><td class="num">${s.vend}</td><td class="num">${brl(s.cc ? s.sc / s.cc : null)}</td><td class="num">${brl(s.cv ? s.sv / s.cv : null)}</td><td class="num">${pct(s.cm ? s.sm / s.cm : null)}</td>
+      <td class="num"><b style="color:${s.disp ? 'var(--text)' : 'var(--faint)'}">${s.disp}</b></td><td class="num">${s.sep || '—'}</td><td class="num"><b>${s.disp + s.sep}</b></td><td class="num">${s.vend}</td><td class="num">${brl(s.cc ? s.sc / s.cc : null)}</td><td class="num">${brl(s.cv ? s.sv / s.cv : null)}</td><td class="num">${pct(s.cm ? s.sm / s.cm : null)}</td>
       <td class="muted">${esc(p.ncm || '—')}</td><td class="muted">${esc(p.ean || '—')}</td>
       <td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="compraProduto" data-id="${p.id}">Compra</button>${s.disp ? `<button class="btn btn-sm btn-dark" data-action="venderProduto" data-id="${p.id}">Vender</button>` : ''}<button class="ghost-ic" data-action="editarProduto" data-id="${p.id}" aria-label="Editar produto">${ic('edit', 16)}</button></div></td></tr>`;
-    }).join('') : vazioLinha(12)}
+    }).join('') : vazioLinha(14)}
     </tbody></table></div>${botaoMais(ps.length, 'produtos.limite', U.limite)}`;
   } else {
     const cols = [...DB.config.tipos, '(Sem categoria)'];
@@ -836,7 +854,8 @@ function vProdutos() {
 function vEstoque() {
   const U = UI.estoque, P = mapaProdutos(), VF = mapaVF();
   const nA = DB.estoque.filter(i => i.status === 'avenda').length;
-  let itens = DB.estoque.filter(i => U.tab === 'geral' || i.status === U.tab);
+  const SEP = separadosIds(), nS = SEP.size;
+  let itens = DB.estoque.filter(i => U.tab === 'geral' || (U.tab === 'separado' ? SEP.has(i.id) : i.status === U.tab));
   if (U.fornecedor) itens = itens.filter(i => (i.fornecedor || '') === U.fornecedor);
   if (U.tab === 'vendido' && U.mes) itens = itens.filter(i => (i.dVenda || '').startsWith(U.mes));
   const q = norm(U.q);
@@ -850,7 +869,7 @@ function vEstoque() {
   const vis = grupos.slice(0, U.limite);
   const fornecedores = [...new Set(DB.estoque.map(i => i.fornecedor).filter(Boolean))].sort();
   const meses = [...new Set(DB.estoque.filter(i => i.dVenda).map(i => i.dVenda.slice(0, 7)))].sort().reverse();
-  const vendidoTab = U.tab === 'vendido';
+  const vendidoTab = U.tab === 'vendido' || U.tab === 'separado';
 
   const cQtd = g => `<td><span class="qtd">${g.ids.length}</span></td>`;
   const cSku = i => `<td class="num muted">${P[i.produto]?.sku ?? '—'}</td>`;
@@ -871,8 +890,8 @@ function vEstoque() {
     thead = '<th>Qtd</th><th>Status</th><th class="num">SKU</th><th>Produto</th><th>Fornecedor</th><th class="num">Custo</th><th class="num">V. Venda</th><th>NF</th><th>Compra</th><th>Validade</th><th>Lote</th><th>D. Venda</th><th></th>';
     rows = vis.map((g, k) => { const i = g.it; return `<tr>${cQtd(g)}<td>${chipStatus(i.status)}</td>${cSku(i)}${celulaProduto(i, P)}<td>${chip('fornecedor', i.fornecedor)}</td><td class="num">${brl(i.custo)}</td><td class="num">${brl(i.venda)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td class="muted">${fdata(i.dVenda)}</td><td><div class="row-actions">${bEdit(k)}</div></td></tr>`; });
   }
-  return `<div class="page">${pageHead('Estoque', 'Movimentação de estoque: cada linha é uma unidade (ou um lote de unidades iguais)', `<button class="btn btn-dark" data-action="novaCompra">${ic('plus', 18)} Registrar compra</button>`)}
-  ${tabs('estoque.tab', U.tab, [['avenda', 'À venda', nA], ['vendido', 'Vendidos', DB.estoque.length - nA], ['geral', 'Geral', DB.estoque.length]])}
+  return `<div class="page">${pageHead('Estoque', `Físico real: ${nA + nS} unidades (${nA} à venda + ${nS} separadas: vendidas no ML e ainda não enviadas). Cada linha é uma unidade (ou um lote de unidades iguais)`, `<button class="btn btn-dark" data-action="novaCompra">${ic('plus', 18)} Registrar compra</button>`)}
+  ${tabs('estoque.tab', U.tab, [['avenda', 'À venda', nA], ['separado', 'Separado', nS], ['vendido', 'Vendidos', DB.estoque.length - nA], ['geral', 'Geral', DB.estoque.length]])}
   <div class="toolbar">${campoBusca('est-q', 'estoque.q', U.q, 'Buscar produto, SKU, NF, cliente...')}
     ${select('estoque.fornecedor', U.fornecedor, [['', 'Todos os fornecedores'], ...fornecedores.map(f => [f, f])], 'Fornecedor')}
     ${vendidoTab ? select('estoque.mes', U.mes, [['', 'Todos os meses'], ...meses.map(m => [m, nomeMes(m)])], 'Mês da venda') : ''}
@@ -1477,7 +1496,7 @@ async function mlPoll() {
       const n = mlNotificarPedidos(novos);
       if (r.novas + r.vinc + r.novas_boni + f + n) commit();
       recalcPendencias();
-      if (UI.view === 'hoje') render();
+      if (['hoje', 'estoque', 'produtos'].includes(UI.view)) render();
     }
   } catch (e) { console.warn('poll', e); }
   polling = false;
@@ -1631,6 +1650,7 @@ async function mlAuto() {
     ML.autoMsg = 'Sincronizando com o Mercado Livre...'; if (UI.view === 'config') render();
     await mlChamar('sync', { days: 10 });
     for (let k = 0; k < 6; k++) { const r = await mlChamar('fretes', { limite: 60 }); if (!r.restantes || !r.feitos) break; }
+    try { await mlChamar('envios', { limite: 40 }); } catch (_) { /* função ainda sem a ação */ }
     ML.pedidos = await mlListarTudo();
     const desde = new Date(Date.now() - AUTO_DIAS * 864e5).toISOString().slice(0, 10);
     const linhas = mlAnalisar().filter(l => l.data >= desde);
@@ -2244,7 +2264,7 @@ function modalProduto(id = null) {
   <div class="form-grid">${campo('pr-ncm', 'NCM', inputTxt('pr-ncm', p.ncm))}${campo('pr-ean', 'EAN', inputTxt('pr-ean', p.ean))}</div>
   <div class="form-grid">${campo('pr-pvf', 'V. Venda Física (R$)', inputTxt('pr-pvf', fmtIn(p.precoFisica), 'inputmode="decimal" placeholder="Só vale quando a unidade entra numa venda física"'), 'full')}</div>
   <div class="form-grid">${campo('pr-eanalt', 'Outros EANs (separados por vírgula)', inputTxt('pr-eanalt', (p.eanAlt || []).join(', ')), 'full')}</div>
-  ${st ? `<div class="stat-row"><div class="stat"><span>Disponível</span><b>${st.disp}</b></div><div class="stat"><span>Vendidos</span><b>${st.vend}</b></div><div class="stat"><span>Custo médio</span><b>${brl(st.cc ? st.sc / st.cc : null)}</b></div><div class="stat"><span>Margem média</span><b>${pct(st.cm ? st.sm / st.cm : null)}</b></div></div>` : ''}`;
+  ${st ? `<div class="stat-row"><div class="stat"><span>Disponível</span><b>${st.disp}</b></div><div class="stat"><span>Separado</span><b>${st.sep}</b></div><div class="stat"><span>Vendidos</span><b>${st.vend}</b></div><div class="stat"><span>Custo médio</span><b>${brl(st.cc ? st.sc / st.cc : null)}</b></div><div class="stat"><span>Margem média</span><b>${pct(st.cm ? st.sm / st.cm : null)}</b></div></div>` : ''}`;
   const esquerda = id ? (st.n ? `<span class="hint left">Tem ${st.n} unidades no histórico, por isso não pode ser excluído</span>` : `<button class="btn btn-sm btn-danger left" data-action="excluirProduto" data-id="${id}">Excluir produto</button>`) : '';
   abrirModal({
     titulo: id ? 'Editar produto' : 'Novo produto', corpo, largura: 680, rodape: rodapePadrao('Salvar', esquerda),

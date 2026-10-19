@@ -199,6 +199,29 @@ async function reclamacoesTeste(_pedidos: number[]) {
   return { passos, reclamacoes: claims.size };
 }
 
+// Status do envio dos pedidos que ainda não saíram (para o estoque "separado"): atualiza em lotes pequenos
+async function envios(limite: number) {
+  const { token } = await getAccess();
+  const desde = new Date(Date.now() - 45 * 86_400_000).toISOString();
+  const { data: pend, error } = await db.from("ml_orders").select("id, shipping_id")
+    .not("shipping_id", "is", null).gte("date_created", desde).neq("status", "cancelled")
+    .or("envio_status.is.null,envio_status.in.(pending,handling,ready_to_ship)")
+    .order("date_created", { ascending: false }).limit(limite);
+  if (error) throw error;
+  let feitos = 0;
+  const erros: string[] = [];
+  for (let i = 0; i < (pend ?? []).length; i += 5) {
+    await Promise.all((pend ?? []).slice(i, i + 5).map(async (o: any) => {
+      try {
+        const { error: err } = await db.from("ml_orders").update(await freteDe(token, o.shipping_id)).eq("id", o.id);
+        if (err) throw err;
+        feitos++;
+      } catch (ex) { erros.push(`${o.id}: ${(ex as Error).message}`); }
+    }));
+  }
+  return { abertos: (pend ?? []).length, feitos, erros: erros.slice(0, 3) };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (!(await autenticar(req))) return json({ error: "não autorizado" }, 401);
@@ -232,6 +255,7 @@ Deno.serve(async (req) => {
     if (action === "ads_teste") return json(await adsTeste());
     if (action === "reclamacoes_teste") return json(await reclamacoesTeste((body.pedidos ?? []).map(Number)));
     if (action === "fretes") return json(await fretes(Math.min(Number(body.limite) || 60, 100)));
+    if (action === "envios") return json(await envios(Math.min(Number(body.limite) || 40, 80)));
     if (action === "list") {
       const off = Number(body.offset) || 0, lim = Math.min(Number(body.limit) || 1000, 1000);
       const { data, error } = await db.from("ml_orders").select("*")
