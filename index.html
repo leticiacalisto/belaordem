@@ -1200,13 +1200,22 @@ function ehBonificacao(p) {
   if (us.length) return us.every(u => norm(u.fornecedor).startsWith('bonifica'));
   return Object.values(DB.config.mlMapa || {}).includes(p.id);   // criado ao vincular um anúncio e nunca comprado
 }
+/* Pedido com reembolso parcial (ex.: 2 unidades, 1 devolvida): o ML mantém a quantidade original, mas o valor pago cai.
+   A quantidade líquida é o valor pago ÷ preço unitário. */
+const pedidoValido = o => o.status === 'paid' || o.status === 'partially_refunded';
+function qtdLiquida(o, it) {
+  const q = it.qty || 1;
+  if (o.status !== 'partially_refunded' || (o.items || []).length !== 1 || !(it.unit_price > 0)) return q;
+  const n = Math.round(Number(o.paid_amount) / it.unit_price);
+  return n >= 1 && n < q ? n : q;
+}
 function mlAnalisar() {
   const linhas = [], usados = new Set();
-  const pedidos = (ML.pedidos || []).filter(o => o.status === 'paid').sort((a, b) => a.date_created.localeCompare(b.date_created));
+  const pedidos = (ML.pedidos || []).filter(pedidoValido).sort((a, b) => a.date_created.localeCompare(b.date_created));
   for (const o of pedidos) {
     const data = dataBR(o.date_created);
     for (const it of o.items || []) {
-      const qtd = it.qty || 1, cands = candidatosMl(it);
+      const qtd = qtdLiquida(o, it), cands = candidatosMl(it);
       const base = { o, it, prod: cands[0] || null, qtd, data, ids: [] };
       if (!cands.length) { linhas.push({ ...base, estado: 'semprod' }); continue; }
       const jaU = DB.estoque.filter(u => u.mlPedido === o.id);
@@ -1360,7 +1369,7 @@ function pendencias() {
     const lancar = c('nova') + c('dup') + c('bonif'), rev = c('semestoque') + c('semprod') + c('prov') + c('revisar');
     if (lancar + rev) add(rev ? 'alta' : 'media', `${lancar + rev} pedido(s) do ML para conferir`, `${lancar} para lançar (já têm estoque ou venda parecida)${rev ? `, ${c('semestoque')} sem unidade, ${c('semprod')} sem produto, ${c('prov')} prováveis` : ''}.`, 'conferir', 'Conferir');
     const m = {};
-    for (const o of ML.pedidos) { if (o.status !== 'paid' || !o.items?.[0]) continue; const k = dataBR(o.date_created).slice(0, 7); m[k] = (m[k] || 0) + (o.items[0].qty || 1); }
+    for (const o of ML.pedidos) { if (!pedidoValido(o) || !o.items?.[0]) continue; const k = dataBR(o.date_created).slice(0, 7); m[k] = (m[k] || 0) + qtdLiquida(o, o.items[0]); }
     for (const u of DB.estoque) { if (u.status !== 'vendido' || u.vendaFisica || !u.dVenda) continue; const k = u.dVenda.slice(0, 7); if (k in m) m[k]--; else m[k] = -1; }
     const dif = Object.values(m).reduce((t, v) => t + Math.abs(v), 0);
     if (dif) add('media', 'Vendas do ML e do site não batem', `${dif} unidade(s) de diferença no mês a mês. Veja o painel em Dados e backup.`, 'go:config', 'Ver');
@@ -1479,7 +1488,7 @@ function resumoDia(data, ateHora = 24) {
   for (const o of ML.pedidos || []) {
     if (dataBR(o.date_created) !== data) continue;
     const hora = +hhmm(o.date_created).slice(0, 2); if (hora >= ateHora) continue;
-    const it = o.items?.[0]; if (!it) continue; const q = it.qty || 1, v = (it.unit_price || 0) * q;
+    const it = o.items?.[0]; if (!it) continue; const q = qtdLiquida(o, it), v = (it.unit_price || 0) * q;
     if (o.status === 'cancelled') { r.canc++; r.cancV += v; r.lista.push({ o, it, q, v }); continue; }
     r.pedidos++; r.un += q; r.bruto += v; r.tarifa += (it.sale_fee || 0) * q; r.frete += Number(o.frete_vendedor || 0); r.horas[hora] += v;
     r.prod[it.title] = (r.prod[it.title] || { q: 0, v: 0 }); r.prod[it.title].q += q; r.prod[it.title].v += v;
@@ -1558,7 +1567,7 @@ function vMarketing() {
   const A = ads.filter(a => a.dia.startsWith(mes)), C = cob.filter(c => c.mes === mes);
   const tot = f => A.reduce((t, a) => t + f(a), 0);
   const custo = tot(a => a.custo), vend = tot(a => a.vendas), cliq = tot(a => a.cliques), impr = tot(a => a.impressoes);
-  const fatML = (ML.pedidos || []).filter(o => o.status === 'paid' && dataBR(o.date_created).startsWith(mes)).reduce((t, o) => t + (o.items?.[0] ? o.items[0].unit_price * (o.items[0].qty || 1) : 0), 0);
+  const fatML = (ML.pedidos || []).filter(o => pedidoValido(o) && dataBR(o.date_created).startsWith(mes)).reduce((t, o) => t + (o.items?.[0] ? o.items[0].unit_price * qtdLiquida(o, o.items[0]) : 0), 0);
   const lucroSite = sum(DB.estoque.filter(u => u.status === 'vendido' && !u.vendaFisica && u.dVenda && u.dVenda.startsWith(mes)), lucro);
   const faturado = C.reduce((t, c) => t + c.valor, 0), extras = C.filter(c => !jaNoLucro(c)).reduce((t, c) => t + c.valor, 0);
   const mkt = C.filter(ehMarketing).reduce((t, c) => t + c.valor, 0);
@@ -1571,7 +1580,7 @@ function vMarketing() {
     const a = ads.filter(x => x.dia.startsWith(m)), c = cob.filter(x => x.mes === m);
     const ca = a.reduce((t, x) => t + x.custo, 0), va = a.reduce((t, x) => t + x.vendas, 0);
     const ex = c.filter(x => !jaNoLucro(x)).reduce((t, x) => t + x.valor, 0);
-    const fat = (ML.pedidos || []).filter(o => o.status === 'paid' && dataBR(o.date_created).startsWith(m)).reduce((t, o) => t + (o.items?.[0] ? o.items[0].unit_price * (o.items[0].qty || 1) : 0), 0);
+    const fat = (ML.pedidos || []).filter(o => pedidoValido(o) && dataBR(o.date_created).startsWith(m)).reduce((t, o) => t + (o.items?.[0] ? o.items[0].unit_price * qtdLiquida(o, o.items[0]) : 0), 0);
     return { m, ca, va, ex, fat };
   });
   const faltaAds = !ads.length, faltaCob = !cob.length;
@@ -1656,9 +1665,9 @@ function mlDivergencias() {
   const m = {};
   const lin = k => m[k] = m[k] || { mu: 0, mv: 0, su: 0, sv: 0 };
   for (const o of ML.pedidos) {
-    if (o.status !== 'paid') continue;
+    if (!pedidoValido(o)) continue;
     const it = o.items?.[0]; if (!it) continue;
-    const x = lin(dataBR(o.date_created).slice(0, 7)); x.mu += it.qty || 1; x.mv += (it.unit_price || 0) * (it.qty || 1);
+    const q = qtdLiquida(o, it), x = lin(dataBR(o.date_created).slice(0, 7)); x.mu += q; x.mv += (it.unit_price || 0) * q;
   }
   for (const u of DB.estoque) {
     if (u.status !== 'vendido' || u.vendaFisica || !u.dVenda) continue;
