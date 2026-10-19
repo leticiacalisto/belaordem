@@ -1,0 +1,16 @@
+name: Lembrete de conferencia (sabado)
+on:
+  schedule:
+    - cron: '0 11 * * 6'   # sabado 8h em Brasilia (11h UTC)
+  workflow_dispatch:
+jobs:
+  lembrete:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar a funcao bo-lembrete
+        run: |
+          curl -fsS -X POST "https://rjntddpjwqxxwmainogw.supabase.co/functions/v1/bo-lembrete" \
+            -H "Authorization: Bearer ${ANON}" -H "apikey: ${ANON}" -H "content-type: application/json" \
+            -d '{"action":"semanal"}'
+        env:
+          ANON: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqbnRkZHBqd3F4eHdtYWlub2d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5OTI0MjUsImV4cCI6MjEwNDU2ODQyNX0.ukStu7Iby70z6pklAdv0-Gx24_duZ1gIBem7CwYiTP4

@@ -80,3 +80,12 @@ language sql stable as $$
   from ml_cobrancas c where criado is not null
   group by 1, 2 order by 1 desc, 6 desc;
 $$;
+
+-- Lembrete semanal: assinaturas de notificação do navegador/celular e valores internos (chaves VAPID, último envio)
+alter table ml_orders add column if not exists envio_sub text;
+create table if not exists bo_push (
+  endpoint text primary key, assinatura jsonb not null, email text, criado timestamptz not null default now()
+);
+alter table bo_push enable row level security;
+create table if not exists bo_kv (chave text primary key, valor text not null);
+alter table bo_kv enable row level security;

@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bela Ordem</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bela Ordem">
+<script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
 <link rel="icon" type="image/svg+xml" href="assets/icone.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icone-32.png">
 <link rel="apple-touch-icon" href="assets/icone-180.png">
@@ -1140,6 +1146,7 @@ function vConfig() {
       <button class="btn btn-dark" data-action="salvarPrefs">Salvar preferências</button>
     </div>
     ${cardML()}
+    ${cardLembrete()}
   </div></div>`;
 }
 
@@ -1185,6 +1192,23 @@ function cardML() {
       </div>${ML.autoMsg ? `<p class="hint" style="margin:8px 0 0">${esc(ML.autoMsg)}</p>` : ''}${ML.adsMsg ? `<p class="hint" style="margin:4px 0 0">${esc(ML.adsMsg)}</p>` : ''}${mlDivergencias()}${tabela}`;
   }
   return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Mercado Livre</h2></div>${corpo}</div>`;
+}
+
+/* ---------- Lembrete semanal de conferência (e-mail + notificação no navegador/celular) ---------- */
+const LEMB = { msg: '' };
+const chaveVapid = b64 => { const p = '='.repeat((4 - b64.length % 4) % 4), r = atob((b64 + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...r].map(c => c.charCodeAt(0))); };
+function cardLembrete() {
+  const suporte = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const perm = suporte ? Notification.permission : null;
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.matchMedia('(display-mode: standalone)').matches;
+  const estado = !suporte ? 'Este navegador não recebe notificações' : perm === 'granted' ? 'Ativadas neste aparelho' : perm === 'denied' ? 'Bloqueadas no navegador' : 'Ainda não ativadas';
+  return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Lembrete semanal de conferência</h2></div>
+    <p class="hint" style="margin:0 0 12px">Todo sábado de manhã você recebe um e-mail e uma notificação para conferir o estoque. Ative as notificações em cada aparelho (computador e celular).</p>
+    <div class="stat" style="margin-bottom:12px"><span>Notificações neste aparelho</span><b>${estado}</b></div>
+    <div class="cfg-actions"><button class="btn btn-dark" data-action="lembreteAtivar" ${suporte ? '' : 'disabled'}>Ativar notificações neste aparelho</button>
+      <button class="btn" data-action="lembreteTeste">Enviar teste (e-mail + notificação)</button></div>
+    ${ios ? '<p class="hint" style="margin:8px 0 0">No iPhone: abra este site no Safari, toque em Compartilhar → "Adicionar à Tela de Início", abra o app pela tela inicial e ative aqui.</p>' : ''}
+    ${LEMB.msg ? `<p class="hint" style="margin:8px 0 0">${esc(LEMB.msg)}</p>` : ''}</div>`;
 }
 
 /* ---------- Conferir pedidos do ML com o estoque (evita venda duplicada) ----------
@@ -2786,6 +2810,27 @@ const ACOES = {
     if (a.startsWith('go:')) go(a.slice(3));
   },
   hojeDia: el => { UI.hoje.data = el.dataset.dia; render(); },
+  lembreteAtivar: async () => {
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('este navegador não suporta notificações (no iPhone, instale o site na Tela de Início)');
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') throw new Error('permissão negada; libere as notificações do site nas configurações do navegador');
+      const reg = await navigator.serviceWorker.ready;
+      const { chave } = await chamar('bo-lembrete', { method: 'POST', body: { action: 'vapid' } });
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: chaveVapid(chave) });
+      await chamar('bo-lembrete', { method: 'POST', body: { action: 'inscrever', assinatura: sub.toJSON() } });
+      LEMB.msg = 'Notificações ativadas neste aparelho.'; toast(LEMB.msg);
+    } catch (e) { LEMB.msg = `Não foi possível ativar: ${e.message}`; toast(LEMB.msg, true); }
+    render();
+  },
+  lembreteTeste: async () => {
+    try {
+      const r = await chamar('bo-lembrete', { method: 'POST', body: { action: 'teste' } });
+      LEMB.msg = `Teste enviado. E-mails: ${r.emails.join(' · ') || 'nenhum'} · Notificações: ${r.push.enviados} enviada(s)${r.push.erros.length ? ` (erro: ${r.push.erros[0]})` : ''}`;
+      toast('Teste enviado');
+    } catch (e) { LEMB.msg = `Teste falhou: ${e.message}`; toast(LEMB.msg, true); }
+    render();
+  },
   conferencia: () => modalConferencia(),
   mlVincular: () => modalVincularAnuncios(),
   mlMarcarBonif: () => $$('.ml-inc[data-bonif]').forEach(c => { c.checked = true; }),
