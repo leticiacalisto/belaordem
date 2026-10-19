@@ -302,6 +302,27 @@ async function statusAnuncio(itemId: string, status: string) {
   return { item_id: itemId, status: j.status ?? status };
 }
 
+// Muda o preço de um anúncio no ML e guarda o preço e a taxa novos
+async function precoMl(itemId: string, preco: number) {
+  const { token } = await getAccess();
+  if (!/^MLB\d+$/.test(itemId) || !(preco > 0) || preco > 100000) throw new Error("dados inválidos");
+  const { data: row } = await db.from("ml_anuncios").select("*").eq("item_id", itemId).maybeSingle();
+  const r = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
+    method: "PUT", headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ price: Math.round(preco * 100) / 100 }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`ML ${r.status}: ${j.message ?? j.error ?? ""} ${JSON.stringify(j.cause ?? "").slice(0, 200)}`);
+  const novo = Number(j.price ?? preco);
+  let taxaValor: number | null = row?.taxa_valor ?? null;
+  try {
+    const f = await fetch(`https://api.mercadolibre.com/sites/MLB/listing_prices?price=${novo}&listing_type_id=${row?.tipo ?? j.listing_type_id}&category_id=${row?.categoria ?? j.category_id}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (f.ok) { const fj = await f.json(); const v = Number((Array.isArray(fj) ? fj[0] : fj)?.sale_fee_amount ?? NaN); if (!Number.isNaN(v)) taxaValor = v; }
+  } catch (_) { /* mantém a taxa anterior */ }
+  const upd = { preco: novo, taxa_valor: taxaValor, taxa_pct: taxaValor != null && novo ? taxaValor / novo : null, atualizado: new Date().toISOString() };
+  await db.from("ml_anuncios").update(upd).eq("item_id", itemId);
+  return { item_id: itemId, ...upd };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (!(await autenticar(req))) return json({ error: "não autorizado" }, 401);
@@ -338,6 +359,7 @@ Deno.serve(async (req) => {
     if (action === "envios") return json(await envios(Math.min(Number(body.limite) || 40, 80)));
     if (action === "anuncios") return json(await anuncios());
     if (action === "anuncio_status") return json(await statusAnuncio(String(body.item_id), String(body.status)));
+    if (action === "preco_ml") return json(await precoMl(String(body.item_id), Number(body.preco)));
     if (action === "anuncios_list") {
       const { data, error } = await db.from("ml_anuncios").select("*").order("titulo");
       if (error) throw error;

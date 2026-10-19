@@ -203,7 +203,9 @@ tbody tr:hover td{background:#fcfbff}
 .ghost-ic:hover{background:#f1f1f5;color:var(--text)}
 tr.total td{font-weight:500;background:#fbfbfd;border-top:1px solid var(--line);position:sticky;bottom:0}
 tr.clic{cursor:pointer}
-td.sync-ml{color:#0f766e}
+td.sync-ml{color:#0f766e;background:#f1faf4}
+input.sync-ok{background:#e8f7ee;border-color:#bfe6cc}
+.sync-leg{display:inline-block;padding:1px 9px;border-radius:6px;font-size:12px}
 td.sync-ml::after{content:' ↻';font-size:10px;opacity:.7}
 tr.sub td{background:#fcfcfe;font-size:12px}
 td.empty-cell{padding:40px;text-align:center;color:var(--faint);white-space:normal}
@@ -405,6 +407,7 @@ const sum = (arr, f) => arr.reduce((s, x) => s + (Number(f(x)) || 0), 0);
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
 const ICON = {
+  sliders: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
   wallet: '<path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h15V9H5a2 2 0 0 1-2-2z"/><circle cx="16.5" cy="14.5" r="1"/>',
   pie: '<path d="M12 3v9h9"/><path d="M21 12A9 9 0 1 1 12 3"/>',
   bars: '<path d="M5 20V10M12 20V4M19 20v-7"/>',
@@ -644,7 +647,7 @@ function adicionarNaLista(lista, valor) {
 const LIM = { estoque: 100, produtos: 150, compras: 60, vendas: 150 };
 const UI = {
   view: 'inicio',
-  estoque: { tab: 'avenda', q: '', fornecedor: '', mes: '', agrupar: true, limite: LIM.estoque },
+  estoque: { ord: {}, tab: 'avenda', q: '', fornecedor: '', mes: '', agrupar: true, limite: LIM.estoque },
   produtos: { tab: 'tabela', q: '', filtro: 'todos', ordem: 'sku', dir: 'asc', limite: LIM.produtos },
   compras: { q: '', abertas: {}, limite: LIM.compras },
   vendas: { tab: 'lista', periodo: hojeISO().slice(0, 7), canal: 'todos', q: '', agrupar: true, limite: LIM.vendas },
@@ -925,20 +928,44 @@ function vEstoque() {
   };
   const bEdit = k => `<button class="ghost-ic" data-action="editarLote" data-lote="${k}" aria-label="Editar">${ic('edit', 16)}</button>`;
   const canal = i => i.vendaFisica ? chip('pessoa', VF[i.vendaFisica]?.pessoa || 'Venda física') : '<span class="chip c-yellow">Mercado Livre</span>';
-  let thead, rows, cols;
-  if (U.tab === 'avenda') {
-    cols = 18;
-    thead = '<th>Qtd</th><th class="num">SKU</th><th>Produto</th><th class="num">Custo</th><th class="num">V. Venda</th><th class="num">Taxa ML</th><th class="num">Frete</th><th class="num">Lucro</th><th class="num">Margem</th><th>Anúncio ML</th><th class="num">V. V. Física</th><th>Validade</th><th>Lote</th><th>Categoria</th><th>Fornecedor</th><th>NF</th><th>Compra</th><th></th>';
-    rows = vis.map((g, k) => { const i = g.it; return `<tr class="clic" data-action="editarLote" data-lote="${k}">${cQtd(g)}${cSku(i)}${celulaProduto(i, P)}${cVals(i, true)}<td>${celAnuncio(i.produto)}</td><td class="num">${i.precoFisica != null ? brl(i.precoFisica) : '—'}</td><td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td><div class="chips">${(P[i.produto]?.tipos || []).map(t => chip('tipo', t)).join('')}</div></td><td>${chip('fornecedor', i.fornecedor)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-dark" data-action="venderLote" data-lote="${k}">Vender</button>${bEdit(k)}</div></td></tr>`; });
-  } else if (vendidoTab) {
-    cols = 16;
-    thead = '<th>Qtd</th><th>D. Venda</th><th class="num">SKU</th><th>Produto</th><th class="num">Custo</th><th class="num">V. Venda</th><th class="num">Taxa ML</th><th class="num">Frete</th><th class="num">Lucro</th><th class="num">Margem</th><th>Canal</th><th>Fornecedor</th><th>NF</th><th>Lote</th><th>Compra</th><th></th>';
-    rows = vis.map((g, k) => { const i = g.it; return `<tr class="clic" data-action="editarLote" data-lote="${k}">${cQtd(g)}<td>${fdata(i.dVenda)}</td>${cSku(i)}${celulaProduto(i, P)}${cVals(i)}<td>${canal(i)}</td><td>${chip('fornecedor', i.fornecedor)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${esc(i.lote || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="devolverLote" data-lote="${k}">Devolução</button>${bEdit(k)}</div></td></tr>`; });
-  } else {
-    cols = 13;
-    thead = '<th>Qtd</th><th>Status</th><th class="num">SKU</th><th>Produto</th><th>Fornecedor</th><th class="num">Custo</th><th class="num">V. Venda</th><th>NF</th><th>Compra</th><th>Validade</th><th>Lote</th><th>D. Venda</th><th></th>';
-    rows = vis.map((g, k) => { const i = g.it; return `<tr class="clic" data-action="editarLote" data-lote="${k}">${cQtd(g)}<td>${chipStatus(i.status)}</td>${cSku(i)}${celulaProduto(i, P)}<td>${chip('fornecedor', i.fornecedor)}</td><td class="num">${brl(i.custo)}</td><td class="num">${brl(i.venda)}</td><td class="muted">${esc(i.nf || '—')}</td><td class="muted">${fdata(i.dCompra)}</td><td>${chipValidade(i.validade)}</td><td class="muted">${esc(i.lote || '—')}</td><td class="muted">${fdata(i.dVenda)}</td><td><div class="row-actions">${bEdit(k)}</div></td></tr>`; });
-  }
+  const rankAn = pid => { const as = ANM[pid] || []; return !as.length ? 0 : as.some(x => x.status === 'active') ? 2 : 1; };
+  const COLS = {
+    qtd: { rot: 'Qtd', cel: (i, g) => `<td><span class="qtd">${g.ids.length}</span></td>`, ord: (i, g) => g.ids.length },
+    dvenda: { rot: 'D. Venda', cel: i => `<td>${fdata(i.dVenda)}</td>`, ord: i => i.dVenda || '' },
+    status: { rot: 'Status', cel: i => `<td>${chipStatus(i.status)}</td>`, ord: i => i.status },
+    sku: { rot: 'SKU', num: true, cel: i => cSku(i), ord: i => P[i.produto]?.sku ?? 1e9 },
+    produto: { rot: 'Produto', cel: i => celulaProduto(i, P), ord: i => nome(i) },
+    custo: { rot: 'Custo', num: true, cel: i => `<td class="num">${brl(i.custo)}</td>`, ord: i => i.custo ?? -1 },
+    venda: { rot: 'V. Venda', num: true, cel: i => `<td${sincML(i) ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho"' : ' class="num"'}>${brl(i.venda)}</td>`, ord: i => i.venda ?? -1 },
+    taxa: { rot: 'Taxa ML', num: true, cel: i => `<td${sincML(i) ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho"' : ' class="num"'}>${pct(i.taxa)}</td>`, ord: i => i.taxa ?? -1 },
+    frete: { rot: 'Frete', num: true, cel: i => `<td${sincML(i) ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho"' : ' class="num"'}>${brl(i.frete)}</td>`, ord: i => i.frete ?? -1 },
+    lucro: { rot: 'Lucro', num: true, cel: i => tdLucro(i), ord: i => lucro(i) ?? -1e9 },
+    margem: { rot: 'Margem', num: true, cel: i => `<td class="num">${pct(margem(i))}</td>`, ord: i => margem(i) ?? -9 },
+    anuncio: { rot: 'Anúncio ML', cel: i => `<td>${celAnuncio(i.produto)}</td>`, ord: i => rankAn(i.produto) },
+    vfisica: { rot: 'V. V. Física', num: true, cel: i => `<td class="num">${i.precoFisica != null ? brl(i.precoFisica) : '—'}</td>`, ord: i => i.precoFisica ?? -1 },
+    validade: { rot: 'Validade', cel: i => `<td>${chipValidade(i.validade)}</td>`, ord: i => i.validade || '9999' },
+    lote: { rot: 'Lote', cel: i => `<td class="muted">${esc(i.lote || '—')}</td>`, ord: i => i.lote || '' },
+    categoria: { rot: 'Categoria', cel: i => `<td><div class="chips">${(P[i.produto]?.tipos || []).map(t => chip('tipo', t)).join('')}</div></td>`, ord: i => (P[i.produto]?.tipos || [])[0] || '' },
+    fornecedor: { rot: 'Fornecedor', cel: i => `<td>${chip('fornecedor', i.fornecedor)}</td>`, ord: i => i.fornecedor || '' },
+    nf: { rot: 'NF', cel: i => `<td class="muted">${esc(i.nf || '—')}</td>`, ord: i => i.nf || '' },
+    compra: { rot: 'Compra', cel: i => `<td class="muted">${fdata(i.dCompra)}</td>`, ord: i => i.dCompra || '' },
+    canal: { rot: 'Canal', cel: i => `<td>${canal(i)}</td>`, ord: i => i.vendaFisica ? (VF[i.vendaFisica]?.pessoa || 'Venda física') : 'Mercado Livre' },
+  };
+  const PADRAO = {
+    avenda: ['qtd', 'sku', 'produto', 'custo', 'venda', 'taxa', 'frete', 'lucro', 'margem', 'anuncio', 'vfisica', 'validade', 'lote', 'categoria', 'fornecedor', 'nf', 'compra'],
+    vendido: ['qtd', 'dvenda', 'sku', 'produto', 'custo', 'venda', 'taxa', 'frete', 'lucro', 'margem', 'canal', 'fornecedor', 'nf', 'lote', 'compra'],
+    geral: ['qtd', 'status', 'sku', 'produto', 'fornecedor', 'custo', 'venda', 'nf', 'compra', 'validade', 'lote', 'dvenda'],
+  };
+  PADRAO.separado = PADRAO.vendido;
+  const prefs = (() => { try { return JSON.parse(localStorage.getItem('bo_cols_estoque') || '{}'); } catch (_) { return {}; } })();
+  const cols = Object.keys(COLS).filter(k => (prefs[U.tab] || PADRAO[U.tab] || PADRAO.avenda).includes(k));
+  const ord = U.ord?.[U.tab];
+  if (ord && COLS[ord.col]) grupos.sort((a, b) => { const x = COLS[ord.col].ord(a.it, a), y = COLS[ord.col].ord(b.it, b); const c = typeof x === 'string' ? x.localeCompare(y, 'pt-BR') : x - y; return ord.dir === 'desc' ? -c : c; });
+  const visO = grupos.slice(0, U.limite);
+  const thead = cols.map(k => `<th class="${COLS[k].num ? 'num' : ''}" aria-sort="${ord?.col === k ? (ord.dir === 'desc' ? 'descending' : 'ascending') : 'none'}"><button class="th-btn ${ord?.col === k ? 'on' : ''}" data-action="estoqueOrdenar" data-col="${k}" title="Ordenar por ${COLS[k].rot}">${COLS[k].rot}<span class="seta">${ord?.col === k ? (ord.dir === 'desc' ? '↓' : '↑') : ''}</span></button></th>`).join('') + '<th></th>';
+  const acao = (k) => U.tab === 'avenda' ? `<button class="btn btn-sm btn-dark" data-action="venderLote" data-lote="${k}">Vender</button>${bEdit(k)}` : vendidoTab ? `<button class="btn btn-sm btn-soft" data-action="devolverLote" data-lote="${k}">Devolução</button>${bEdit(k)}` : bEdit(k);
+  const rows = visO.map((g, k) => { const i = g.it; return `<tr class="clic" data-action="editarLote" data-lote="${k}">${cols.map(c => COLS[c].cel(i, g)).join('')}<td><div class="row-actions">${acao(k)}</div></td></tr>`; });
+  const nCols = cols.length + 1;
   if (U.tab === 'anuncios') {
     if (!ML.anuncios && ML.status?.connected && !ML.carregandoAn) { ML.carregandoAn = true; mlCarregarAnuncios().then(() => { ML.carregandoAn = false; render(); }).catch(() => { ML.carregandoAn = false; }); }
     return `<div class="page">${pageHead('Estoque', 'Cada linha é uma unidade (ou um lote de unidades iguais)', `<button class="btn" data-action="conferencia">Conferência de estoque</button> <button class="btn btn-dark" data-action="novaCompra">${ic('plus', 18)} Registrar compra</button>`)}${kpiEstoque}${tabs('estoque.tab', U.tab, ABAS)}${cardAnuncios()}</div>`;
@@ -949,9 +976,10 @@ function vEstoque() {
   <div class="toolbar">${campoBusca('est-q', 'estoque.q', U.q, 'Buscar produto, SKU, NF, cliente...')}
     ${select('estoque.fornecedor', U.fornecedor, [['', 'Todos os fornecedores'], ...fornecedores.map(f => [f, f])], 'Fornecedor')}
     ${vendidoTab ? select('estoque.mes', U.mes, [['', 'Todos os meses'], ...meses.map(m => [m, nomeMes(m)])], 'Mês da venda') : ''}
-    <label class="check"><input type="checkbox" data-bind="estoque.agrupar" ${U.agrupar ? 'checked' : ''}> Agrupar unidades iguais</label></div>
+    <label class="check"><input type="checkbox" data-bind="estoque.agrupar" ${U.agrupar ? 'checked' : ''}> Agrupar unidades iguais</label>
+    <button class="btn btn-sm btn-soft" style="margin-left:auto" data-action="estoqueColunas" title="Escolher quais colunas aparecem" aria-label="Personalizar colunas">${ic('sliders', 16)} Colunas</button></div>
   <div class="summary"><span><b>${itens.length.toLocaleString('pt-BR')}</b> unidades</span><span>Custo <b>${brl(sum(itens, i => i.custo))}</b></span><span>${vendidoTab ? 'Faturamento' : 'Valor de venda'} <b>${brl(sum(itens, i => i.venda))}</b></span><span>${vendidoTab ? 'Lucro' : 'Lucro previsto'} <b>${brl(sum(itens, lucro))}</b></span></div>
-  <div class="table-wrap"><table><thead><tr>${thead}</tr></thead><tbody>${rows.join('') || vazioLinha(cols)}</tbody></table></div>
+  <div class="table-wrap"><table><thead><tr>${thead}</tr></thead><tbody>${rows.join('') || vazioLinha(nCols)}</tbody></table></div>
   ${botaoMais(grupos.length, 'estoque.limite', U.limite)}</div>`;
 }
 
@@ -1490,6 +1518,14 @@ function freteRecente(itemId) {
   const u = v.slice(0, 3);
   return u.length ? Math.round(u.reduce((t, x) => t + x[1], 0) / u.length * 100) / 100 : null;
 }
+/* o que o ML diz para o produto: o anúncio ativo com pedido mais recente (preço, taxa e frete recente) */
+function alvoML(pid) {
+  const as = (mapaAnuncios()[pid] || []).filter(a => a.status === 'active' && !a.tem_variacoes); if (!as.length) return null;
+  const ult = {};
+  for (const o of ML.pedidos || []) for (const it of o.items || []) if (!ult[it.item_id] || o.date_created > ult[it.item_id]) ult[it.item_id] = o.date_created;
+  const a = [...as].sort((x, y) => (ult[y.item_id] || '').localeCompare(ult[x.item_id] || '') || x.preco - y.preco)[0];
+  return { a, venda: Number(a.preco), taxa: a.taxa_pct != null ? Math.round(Number(a.taxa_pct) * 1e5) / 1e5 : null, frete: freteRecente(a.item_id) };
+}
 function aplicarAnuncios() {
   const porProd = {};
   for (const a of ML.anuncios || []) {
@@ -1542,7 +1578,7 @@ function cardAnuncios() {
     : `<div class="table-wrap livre" style="margin-top:14px;max-height:520px;overflow:auto"><table><thead><tr><th>Anúncio</th><th>Produto</th><th>Situação</th><th class="num">Preço ML</th><th class="num">Taxa</th><th class="num">Estoque ML</th><th class="num">Estoque site</th><th></th></tr></thead><tbody>
       ${linhas.length ? linhas.map(l => { const a = l.a, mexe = a.status === 'active' || a.status === 'paused', ativo = a.status === 'active';
         return `<tr class="clic" data-action="mlAbrirAnuncio" data-item="${esc(a.item_id)}"><td>${esc((a.titulo || '').slice(0, 58))}</td><td>${l.p ? esc(l.p.nome.slice(0, 30)) : '<span class="chip c-orange">sem vínculo</span>'}</td><td>${chipSt(a.status)}</td><td class="num">${brl(a.preco)}</td><td class="num">${a.taxa_pct != null ? pct(a.taxa_pct) : '—'}</td><td class="num">${a.qtd ?? '—'}</td><td class="num ${diverge(l) ? 'neg' : ''}">${l.site ?? '—'}</td>
-        <td style="white-space:nowrap">${mexe ? `<button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}" title="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" aria-label="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" ${off}>${ic(ativo ? 'pause' : 'play', 18)}</button> ` : ''}${l.p && mexe ? `<button class="btn btn-sm" data-action="mlEnviarUm" data-item="${esc(a.item_id)}" ${off}>Enviar estoque</button>` : ''}</td></tr>`; }).join('') : vazioLinha(8, 'Nenhum anúncio neste filtro.')}
+        <td style="white-space:nowrap">${mexe ? `<button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}" title="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" aria-label="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" ${off}>${ic(ativo ? 'pause' : 'play', 18)}</button> ` : ''}${l.p && mexe ? `<button class="btn btn-sm" data-action="mlEnviarUm" data-item="${esc(a.item_id)}" ${off}>Enviar estoque</button> <button class="btn btn-sm" data-action="mlEnviarValor" data-item="${esc(a.item_id)}" ${off}>Enviar valor</button>` : ''}</td></tr>`; }).join('') : vazioLinha(8, 'Nenhum anúncio neste filtro.')}
       </tbody></table></div><p class="hint" style="margin-top:6px">${plural(cont.ativos, 'anúncio ativo', 'anúncios ativos')} e ${cont.pausados} pausado(s). Clique numa linha para ver os detalhes. Preço, taxa e frete dos ativos vêm do ML e atualizam as unidades à venda sozinhos. Estoque e ativar/pausar só mudam no ML quando você confirmar.</p>`;
   return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Anúncios do ML e estoque</h2></div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -1569,11 +1605,59 @@ function modalAnuncio(itemId) {
     <p class="hint">${esc(a.item_id)}${a.tipo ? ` · tipo ${esc(a.tipo)}` : ''}${a.frete_gratis ? ' · frete grátis' : ''} · <a href="${link}" target="_blank" rel="noopener">Abrir no Mercado Livre</a></p>`;
   abrirModal({
     titulo: 'Anúncio do ML', corpo, largura: 640,
-    rodape: `<button class="btn btn-soft" data-action="fecharModal">Fechar</button>${mexe ? `<button class="btn" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}">${ic(ativo ? 'pause' : 'play', 16)} ${ativo ? 'Pausar' : 'Ativar'}</button>` : ''}${p && mexe ? '<button class="btn btn-dark" data-action="confirmarModal">Enviar estoque</button>' : ''}`,
+    rodape: `<button class="btn btn-soft" data-action="fecharModal">Fechar</button>${mexe ? `<button class="btn" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}">${ic(ativo ? 'pause' : 'play', 16)} ${ativo ? 'Pausar' : 'Ativar'}</button>` : ''}${mexe ? `<button class="btn" data-action="mlEnviarValor" data-item="${esc(a.item_id)}">Enviar valor</button>` : ''}${p && mexe ? '<button class="btn btn-dark" data-action="confirmarModal">Enviar estoque</button>' : ''}`,
     onConfirm: () => {
       const q = parseInt(val('an-qtd'), 10);
       if (!(q >= 0)) return erro('Confira a quantidade.');
       confirmar('Enviar estoque ao ML', `Enviar <b>${q}</b> unidade(s) para o anúncio <b>${esc((a.titulo || '').slice(0, 60))}</b>? Hoje o ML mostra ${a.qtd ?? '—'}.${q === 0 ? ' Com 0, o ML pausa o anúncio.' : ''}`, () => enviarEstoqueML([{ item_id: a.item_id, qtd: q }]), { texto: 'Enviar' });
+    },
+  });
+}
+const NOMES_COLS = { qtd: 'Qtd', dvenda: 'Data da venda', status: 'Status', sku: 'SKU', produto: 'Produto', custo: 'Custo', venda: 'V. Venda', taxa: 'Taxa ML', frete: 'Frete', lucro: 'Lucro', margem: 'Margem', anuncio: 'Anúncio ML', vfisica: 'V. Venda Física', validade: 'Validade', lote: 'Lote', categoria: 'Categoria', fornecedor: 'Fornecedor', nf: 'NF', compra: 'Data da compra', canal: 'Canal' };
+const COLS_PADRAO = {
+  avenda: ['qtd', 'sku', 'produto', 'custo', 'venda', 'taxa', 'frete', 'lucro', 'margem', 'anuncio', 'vfisica', 'validade', 'lote', 'categoria', 'fornecedor', 'nf', 'compra'],
+  vendido: ['qtd', 'dvenda', 'sku', 'produto', 'custo', 'venda', 'taxa', 'frete', 'lucro', 'margem', 'canal', 'fornecedor', 'nf', 'lote', 'compra'],
+  geral: ['qtd', 'status', 'sku', 'produto', 'fornecedor', 'custo', 'venda', 'nf', 'compra', 'validade', 'lote', 'dvenda'],
+};
+COLS_PADRAO.separado = COLS_PADRAO.vendido;
+function modalColunasEstoque() {
+  const tab = UI.estoque.tab; let prefs = {}; try { prefs = JSON.parse(localStorage.getItem('bo_cols_estoque') || '{}'); } catch (_) { /* sem cache */ }
+  const atual = prefs[tab] || COLS_PADRAO[tab] || COLS_PADRAO.avenda;
+  abrirModal({
+    titulo: 'Colunas da tabela', largura: 520,
+    corpo: `<p class="muted" style="margin:0 0 12px">Marque o que você quer ver nesta aba. Clique no nome da coluna na tabela para ordenar. A escolha fica salva neste aparelho.</p>
+      <div class="chips" style="gap:8px">${Object.entries(NOMES_COLS).map(([k, n]) => `<label class="check" style="background:#f6f6f9;padding:6px 10px;border-radius:8px"><input type="checkbox" class="cl-ck" value="${k}" ${atual.includes(k) ? 'checked' : ''}> ${n}</label>`).join('')}</div>`,
+    rodape: `<button class="btn btn-sm btn-soft left" data-action="estoqueColunasPadrao">Restaurar padrão</button><button class="btn btn-soft" data-action="fecharModal">Cancelar</button><button class="btn btn-dark" data-action="confirmarModal">Aplicar</button>`,
+    onConfirm: () => {
+      const ks = $$('.cl-ck:checked').map(x => x.value);
+      if (!ks.includes('produto')) return erro('A coluna Produto precisa ficar visível.');
+      prefs[tab] = ks; try { localStorage.setItem('bo_cols_estoque', JSON.stringify(prefs)); } catch (_) { /* sem cache */ }
+      render();
+    },
+  });
+}
+function modalEnviarValorML(itemId) {
+  const a = (ML.anuncios || []).find(x => x.item_id === itemId); if (!a) return;
+  const p = anuncioProduto(a), n = p ? DB.estoque.filter(u => u.produto === p.id && u.status === 'avenda').length : 0;
+  abrirModal({
+    titulo: 'Enviar valor de venda ao ML', largura: 520,
+    corpo: `<div class="info">${esc(a.titulo)}</div>
+      <div class="form-grid">${campo('pv-preco', 'Novo valor de venda (R$)', inputNum('pv-preco', a.preco))}<div class="f"><span class="hint" style="display:block;margin-top:26px">Hoje no ML: <b>${brl(a.preco)}</b></span></div></div>
+      <p class="hint" style="margin:0">Atualiza o preço no Mercado Livre e, ${p ? `nas <b>${n}</b> unidades à venda de <b>${esc(p.nome)}</b>` : 'quando o anúncio estiver vinculado, nas unidades do produto'}, o V. Venda e a taxa (que muda com o preço).</p>`,
+    onConfirm: () => {
+      const v = parseNum(val('pv-preco'));
+      if (v == null || Number.isNaN(v) || v <= 0) return erro('Informe o valor.');
+      if (Math.abs(v - a.preco) < 0.005) return erro('O valor é igual ao que já está no ML.');
+      confirmar('Enviar valor ao ML', `Mudar o preço de <b>${esc((a.titulo || '').slice(0, 60))}</b> de ${brl(a.preco)} para <b>${brl(v)}</b> no Mercado Livre agora?`, async () => {
+        ML.ocupado = true; ML.progresso = 'Enviando valor ao ML...'; render();
+        try {
+          const r = await mlChamar('preco_ml', { item_id: a.item_id, preco: v });
+          Object.assign(a, { preco: r.preco, taxa_valor: r.taxa_valor, taxa_pct: r.taxa_pct });
+          const ap = aplicarAnuncios(); if (ap.mudou) commit();
+          ML.anunciosMsg = `Valor enviado: ${brl(r.preco)} no ML${ap.mudou ? ` e em ${plural(ap.mudou, 'unidade', 'unidades')} do site` : ''}.`; toast(ML.anunciosMsg);
+        } catch (e) { ML.anunciosMsg = `Não foi possível mudar o valor: ${e.message}`; toast(ML.anunciosMsg, true); }
+        ML.ocupado = false; ML.progresso = ''; render();
+      }, { texto: 'Enviar valor' });
     },
   });
 }
@@ -2359,8 +2443,11 @@ function modalDevolver(lote) {
 function modalLote(lote) {
   const i = lote.it, P = mapaProdutos(), n = lote.ids.length;
   const vfs = DB.vendasFisicas.slice().sort((a, b) => (b.data || '').localeCompare(a.data || ''));
-  const ansP = mapaAnuncios()[i.produto] || [], trava = i.status === 'avenda' && ansP.some(a => a.status === 'active');
-  const blocoML = ansP.length ? `<div class="info" style="margin-bottom:12px"><b>Anúncios deste produto no ML</b><br>${ansP.map(a => `<span class="chip ${a.status === 'active' ? 'c-green' : 'c-orange'}">${a.status === 'active' ? 'Ativo' : 'Inativo'}</span> ${esc((a.titulo || '').slice(0, 54))} · ${brl(a.preco)} · taxa ${a.taxa_pct != null ? pct(a.taxa_pct) : '—'} · ML ${a.qtd ?? '—'} <button class="btn-link" data-action="mlAbrirAnuncio" data-item="${esc(a.item_id)}">abrir</button>`).join('<br>')}${trava ? '<br><span class="muted">Preço, taxa e frete vêm do anúncio e se atualizam sozinhos, por isso ficam bloqueados aqui. Para vender por outro valor numa venda física, use o V. Venda Física.</span>' : ''}</div>` : '';
+  const ansP = mapaAnuncios()[i.produto] || [], trava = i.status === 'avenda' && ansP.some(a => a.status === 'active'), alvo = trava ? alvoML(i.produto) : null;
+  const igual = (x, y, tol) => x != null && y != null && Math.abs(x - y) <= tol;
+  const okV = !!alvo && igual(i.venda, alvo.venda, 0.005), okT = !!alvo && igual(i.taxa, alvo.taxa, 0.0005), okF = !!alvo && igual(i.frete, alvo.frete, 0.005);
+  const attrSync = ok => trava ? `readonly class="${ok ? 'sync-ok' : ''}" title="${ok ? 'Sincronizado com o anúncio do ML' : 'Ainda não sincronizado: atualiza no próximo ciclo ou aperte Atualizar do ML agora'}"` : '';
+  const blocoML = ansP.length ? `<div class="info" style="margin-bottom:12px"><b>Anúncios deste produto no ML</b><br>${ansP.map(a => `<span class="chip ${a.status === 'active' ? 'c-green' : 'c-orange'}">${a.status === 'active' ? 'Ativo' : 'Inativo'}</span> ${esc((a.titulo || '').slice(0, 54))} · ${brl(a.preco)} · taxa ${a.taxa_pct != null ? pct(a.taxa_pct) : '—'} · ML ${a.qtd ?? '—'} <button class="btn-link" data-action="mlAbrirAnuncio" data-item="${esc(a.item_id)}">abrir</button>`).join('<br>')}${trava ? `<br><span class="sync-leg" style="background:#e8f7ee">verde</span> <span class="muted">= veio do anúncio e está atualizado · </span><span class="sync-leg" style="background:#fff;border:1px solid var(--line)">branco</span> <span class="muted">= não sincronizado. Esses campos ficam bloqueados enquanto houver anúncio ativo. Para vender por outro valor numa venda física, use o V. Venda Física.</span> <button class="btn btn-sm btn-soft" data-action="mlSincronizarAgora">Atualizar do ML agora</button>` : ''}</div>` : '';
   const corpo = `${blocoML}<div class="info">${n > 1 ? `As alterações valem para as <b>${n} unidades</b> deste lote.` : 'Editando 1 unidade.'}</div>
   <div class="form-grid">${campo('ml-prod', 'Produto', `<input id="ml-prod" list="dl-ml" value="${esc(P[i.produto] ? labelProduto(P[i.produto]) : '')}" autocomplete="off">${datalistProdutos('dl-ml', false)}`, 'full')}</div>
   <div class="form-grid">
@@ -2370,9 +2457,9 @@ function modalLote(lote) {
   </div>
   <div class="form-grid">
     ${campo('ml-custo', 'Custo', inputNum('ml-custo', i.custo))}
-    ${campo('ml-venda', 'V. Venda', inputNum('ml-venda', i.venda, trava ? 'readonly title="Vem do anúncio do ML"' : ''))}
-    ${campo('ml-taxa', 'Taxa ML (%)', inputNum('ml-taxa', i.taxa != null ? i.taxa * 100 : null, trava ? 'readonly title="Vem do anúncio do ML"' : ''))}
-    ${campo('ml-frete', 'Frete', inputNum('ml-frete', i.frete, trava ? 'readonly title="Vem do anúncio do ML"' : ''))}
+    ${campo('ml-venda', 'V. Venda', inputNum('ml-venda', i.venda, attrSync(okV)))}
+    ${campo('ml-taxa', 'Taxa ML (%)', inputNum('ml-taxa', i.taxa != null ? i.taxa * 100 : null, attrSync(okT)))}
+    ${campo('ml-frete', 'Frete', inputNum('ml-frete', i.frete, attrSync(okF)))}
   </div>
   <div class="form-grid">${campo('ml-pvf', 'V. Venda Física (R$)', inputNum('ml-pvf', i.precoFisica))}<div class="f"><span class="hint" style="margin-top:26px;display:block">Só vale quando a unidade entra numa venda física: substitui o V. Venda.</span></div></div>
   <div class="form-grid">
@@ -3276,6 +3363,11 @@ const ACOES = {
     const blob = new Blob(['\ufeff' + linhas.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `dre-${UI.dre.ano}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   },
+  estoqueOrdenar: el => { const U = UI.estoque, c = el.dataset.col, o = U.ord[U.tab]; U.ord[U.tab] = { col: c, dir: o && o.col === c && o.dir === 'asc' ? 'desc' : 'asc' }; render(); },
+  estoqueColunas: () => modalColunasEstoque(),
+  estoqueColunasPadrao: () => { try { const pr = JSON.parse(localStorage.getItem('bo_cols_estoque') || '{}'); delete pr[UI.estoque.tab]; localStorage.setItem('bo_cols_estoque', JSON.stringify(pr)); } catch (_) { /* sem cache */ } fecharModal(); render(); },
+  mlSincronizarAgora: () => { const r = aplicarAnuncios(); fecharModal(); commit(r.mudou ? `${plural(r.mudou, 'unidade atualizada', 'unidades atualizadas')} com preço, taxa e frete do ML` : 'Tudo já estava igual ao ML'); },
+  mlEnviarValor: el => modalEnviarValorML(el.dataset.item),
   conferencia: () => modalConferencia(),
   mlVincular: () => modalVincularAnuncios(),
   mlMarcarBonif: () => $$('.ml-inc[data-bonif]').forEach(c => { c.checked = true; }),
