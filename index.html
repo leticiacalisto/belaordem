@@ -1403,7 +1403,7 @@ function vConciliacao() {
       <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Fornecedor</th><th>NF</th><th class="num">Valor</th><th>Situação</th><th></th></tr></thead><tbody>
       ${forn.map(g => `<tr><td>${fdata(g.dFim)}</td><td>${esc(g.fornecedor || '')}</td><td>${esc(g.nf)}</td><td class="num">${brl(g.custo)}</td><td>${chipPagCompra(g)}</td><td class="acoes"><button class="btn btn-sm btn-soft" data-action="concPagarNF" data-chave="${esc(g.chave)}">Marcar paga</button></td></tr>`).join('') || vazioLinha(6, 'Todas as notas têm pagamento.')}</tbody></table></div>`;
   } else {
-    corpo = !ml ? '<p class="empty-note">Carregando os pedidos do Mercado Livre...</p>' : `<p class="note" style="margin-top:0">Pedidos do ML pagos há mais de 20 dias cujo dinheiro não apareceu no extrato, e liberações que não ligam a nenhum pedido.</p>
+    corpo = !ml ? (ML.pedidosErro ? `<p class="empty-note">Não consegui carregar os pedidos do Mercado Livre: ${esc(ML.pedidosErro)}</p><button class="btn btn-soft" data-action="concRecarregar">Tentar de novo</button>` : '<p class="empty-note">Carregando os pedidos do Mercado Livre...</p>') : `<p class="note" style="margin-top:0">Pedidos do ML pagos há mais de 20 dias cujo dinheiro não apareceu no extrato, e liberações que não ligam a nenhum pedido.</p>
       <div class="sub-title">Pedidos sem dinheiro no extrato (${ml.semDinheiro.length})</div>
       <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Pedido</th><th>Itens</th><th class="num">Pago</th></tr></thead><tbody>
       ${ml.semDinheiro.slice(0, 80).map(o => `<tr><td>${fdata(o.date_created.slice(0, 10))}</td><td class="muted">${esc(String(o.id))}</td><td>${esc((o.items || []).map(i => `${i.qty}× ${i.title}`).join(', '))}</td><td class="num">${brl(o.paid_amount)}</td></tr>`).join('') || vazioLinha(4, 'Nenhum.')}</tbody></table></div>
@@ -1509,9 +1509,9 @@ function chipPagCompra(g) {
 /* vendas do ML pagas cujo dinheiro ainda nao apareceu no extrato (liquido estimado = pago - tarifa - frete) */
 /* carrega os pedidos do ML em segundo plano quando uma tela precisa deles (Caixa, Conciliação) */
 function garantirPedidosML() {
-  if (ML.pedidos || ML.hojeCarregando || !sessao()) return;
+  if (ML.pedidos || ML.hojeCarregando || ML.pedidosErro || !sessao()) return;
   ML.hojeCarregando = true;
-  mlChamar('status').then(async st => { ML.status = st; if (st.connected) ML.pedidos = await mlListarTudo(); }).catch(() => {}).finally(() => { ML.hojeCarregando = false; if (['conciliacao', 'fluxo'].includes(UI.view)) render(); });
+  mlChamar('status').then(async st => { ML.status = st; if (!st.connected) throw new Error('O Mercado Livre não está conectado.'); ML.pedidos = await mlListarTudo(); }).catch(e => { ML.pedidosErro = e.message || String(e); }).finally(() => { ML.hojeCarregando = false; if (['conciliacao', 'fluxo'].includes(UI.view)) render(); });
 }
 function mlNaoLiberado() {
   garantirPedidosML();
@@ -3605,6 +3605,7 @@ const ACOES = {
   novaFisica: () => modalFisicaNova(),
   caixaMes: el => modalCaixaMes(el.dataset.mes),
   concIr: el => { UI.conc.tab = el.dataset.tab; UI.conc.mes = ''; go('conciliacao'); },
+  concRecarregar: () => { ML.pedidosErro = null; render(); },
   concLancar: el => modalLancarPix(+el.dataset.i),
   concOrigem: async () => {
     const ids = mlSemVinculo().semPedido.map(x => x.i).filter(i => !CONC_ORIGEM.mapa[i] || CONC_ORIGEM.mapa[i].erro);
