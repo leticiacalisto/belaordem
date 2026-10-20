@@ -1496,16 +1496,37 @@ function chipPagCompra(g) {
   if (r.st === 'Parcial') return `<span class="chip c-orange" title="Pago ${brl(r.pago)}">Falta ${brl(r.falta)}</span>`;
   return (ate && g.dFim > ate) ? '<span class="chip">Depois do extrato</span>' : '<span class="chip c-red">Sem pagamento</span>';
 }
+/* vendas do ML pagas cujo dinheiro ainda nao apareceu no extrato (liquido estimado = pago - tarifa - frete) */
+function mlNaoLiberado() {
+  const e = DB.extrato; if (!e || !ML.pedidos) return null;
+  const ids = new Set(e.movs.filter(x => (x.c === 'ml' || x.c === 'ml_pix') && x.k).map(x => String(x.k)));
+  return ML.pedidos.filter(o => pedidoValido(o) && o.date_created.slice(0, 10) > addDias(e.ate, -45) && o.date_created.slice(0, 10) <= e.ate && !ids.has(String(o.id)))
+    .map(o => { const it = o.items?.[0] || {}, q = qtdLiquida(o, it); return { o, liq: Math.max(0, Number(o.paid_amount || 0) - (it.sale_fee || 0) * q - Number(o.frete_vendedor || 0)) }; });
+}
+/* o que ainda vai entrar: vendas do ML a liberar e vendas fisicas a receber, por mes da venda */
+function aEntrarHTML(naoLib) {
+  const sv = statsVF(), meses = {};
+  const lin = k => (meses[k] = meses[k] || { ml: 0, nMl: 0, fis: 0, nFis: 0 });
+  for (const r of naoLib || []) { const l = lin(r.o.date_created.slice(0, 7)); l.ml += r.liq; l.nMl++; }
+  const pend = DB.vendasFisicas.filter(v => tipoVF(v) === 'venda').map(v => ({ v, falta: Math.max(0, (sv[v.id]?.venda || 0) - (v.pago || 0)) })).filter(r => r.falta > 0.5).sort((a, b) => (a.v.data || '').localeCompare(b.v.data || ''));
+  for (const r of pend) { const l = lin((r.v.data || '').slice(0, 7) || 'sem data'); l.fis += r.falta; l.nFis++; }
+  const ks = Object.keys(meses).sort();
+  return `<div class="sub-title" style="margin-top:22px">O que ainda vai entrar</div>
+    <div class="table-wrap livre"><table><thead><tr><th>Mês da venda</th><th class="num">ML a liberar</th><th class="num">Vendas físicas a receber</th><th class="num">Total</th></tr></thead><tbody>
+    ${ks.map(k => `<tr><td>${k === 'sem data' ? k : nomeMes(k)}</td><td class="num">${meses[k].nMl ? `${brl(meses[k].ml)} <span class="muted">(${meses[k].nMl})</span>` : '—'}</td><td class="num">${meses[k].nFis ? `${brl(meses[k].fis)} <span class="muted">(${meses[k].nFis})</span>` : '—'}</td><td class="num">${brl(meses[k].ml + meses[k].fis)}</td></tr>`).join('') || vazioLinha(4, 'Nada pendente.')}
+    <tr class="total"><td>Total</td><td class="num">${naoLib ? brl(sum(naoLib, r => r.liq)) : '—'}</td><td class="num">${brl(sum(pend, r => r.falta))}</td><td class="num">${brl(sum(naoLib || [], r => r.liq) + sum(pend, r => r.falta))}</td></tr></tbody></table></div>
+    <div class="sub-title" style="margin-top:18px">Vendas físicas não recebidas (${pend.length})</div>
+    <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Cliente</th><th class="num">Venda</th><th class="num">Pago</th><th class="num">Falta</th></tr></thead><tbody>
+    ${pend.map(r => `<tr class="clic" data-action="abrirFisica" data-id="${r.v.id}"><td>${fdata(r.v.data)}</td><td>${esc(r.v.pessoa)}</td><td class="num">${brl(sv[r.v.id].venda)}</td><td class="num">${brl(r.v.pago)}</td><td class="num neg">${brl(r.falta)}</td></tr>`).join('') || vazioLinha(5, 'Tudo recebido.')}</tbody></table></div>
+    <p class="note">ML: pedidos pagos até ${fdata(DB.extrato.ate)} cujo dinheiro ainda não apareceu no extrato, já sem tarifa e frete (valor estimado; o ML libera conforme a entrega). Vendas depois dessa data entram quando você importar o extrato novo.</p>`;
+}
 function fluxoCaixa() {
   const e = DB.extrato, m = caixaPorMes();
   if (!m) return '<div class="info">Ainda não há extrato do Mercado Pago importado. Importe o backup com o extrato para ver o caixa real.</div>';
   const keys = Object.keys(m).sort(), ult = keys[keys.length - 1], saldo = m[ult].saldo, conta = m[ult].conta, guardado = m[ult].guardado, confere = Math.abs(conta - e.saldoFinal) < 0.02;
   const comp = comprasAgrupadas(), abertas = comp.filter(g => g.nf && !['Pago'].includes(statusPagCompra(g).st) && !(e.ate && g.dFim > e.ate)), aPagar = sum(abertas, g => statusPagCompra(g).falta ?? g.custo);
   const sv = statsVF(), aReceber = sum(DB.vendasFisicas.filter(v => tipoVF(v) === 'venda'), v => Math.max(0, (sv[v.id]?.venda || 0) - (v.pago || 0)));
-  // a liberar do ML: pedidos pagos cujo dinheiro ainda não apareceu no extrato
-  const ids = new Set(e.movs.filter(x => (x.c === 'ml' || x.c === 'ml_pix') && x.k).map(x => String(x.k)));
-  let aLiberar = null;
-  if (ML.pedidos) aLiberar = sum((ML.pedidos || []).filter(o => pedidoValido(o) && o.date_created.slice(0, 10) > addDias(e.ate, -45) && o.date_created.slice(0, 10) <= e.ate && !ids.has(String(o.id))), o => { const it = o.items?.[0] || {}, q = qtdLiquida(o, it); return Math.max(0, Number(o.paid_amount || 0) - (it.sale_fee || 0) * q - Number(o.frete_vendedor || 0)); });
+  const naoLib = mlNaoLiberado(), aLiberar = naoLib ? sum(naoLib, r => r.liq) : null;
   const nomeG = Object.fromEntries(GRUPOS_CAIXA);
   const tot = { ent: 0, sai: 0, liq: 0, g: {} };
   keys.forEach(k => { tot.ent += m[k].ent; tot.sai += m[k].sai; tot.liq += m[k].liq; for (const [g, v] of Object.entries(m[k].g)) tot.g[g] = (tot.g[g] || 0) + v; });
@@ -1519,6 +1540,7 @@ function fluxoCaixa() {
     <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Resultado do mês</th><th class="num">Na caixinha</th><th class="num">Caixa total</th>${GRUPOS_CAIXA.filter(([g]) => g !== 'ret').map(([k, n]) => `<th class="num">${n}</th>`).join('')}</tr></thead><tbody>
     ${keys.map(k => `<tr class="clic" data-action="caixaMes" data-mes="${k}" title="Ver os ${m[k].n} movimentos"><td>${nomeMes(k)}</td><td class="num">${brl(m[k].ent)}</td><td class="num neg">${brl(m[k].sai)}</td><td class="num ${m[k].liq < 0 ? 'neg' : ''}"><b style="font-weight:500">${brl(m[k].liq)}</b></td><td class="num">${brl(m[k].guardado)}</td><td class="num">${brl(m[k].saldo)}</td>${GRUPOS_CAIXA.filter(([g]) => g !== 'ret').map(([g]) => cel(m[k].g[g])).join('')}</tr>`).join('')}
     <tr class="total"><td>Total</td><td class="num">${brl(tot.ent)}</td><td class="num neg">${brl(tot.sai)}</td><td class="num">${brl(tot.liq)}</td><td class="num">${brl(guardado)}</td><td class="num">${brl(saldo)}</td>${GRUPOS_CAIXA.filter(([g]) => g !== 'ret').map(([g]) => cel(tot.g[g])).join('')}</tr></tbody></table></div>
+    ${aEntrarHTML(naoLib)}
     <p class="note">Vem do extrato da conta do Mercado Pago (${fdata(e.de)} a ${fdata(e.ate)}), que é por onde passam as vendas do ML, os Pix dos clientes, as compras e as taxas. Clique num mês para ver os movimentos. O ML entra líquido (já sem tarifa e frete). Guardar e retirar da caixinha só muda o dinheiro de lugar dentro da mesma conta: não entra em Entrou/Saiu, e o valor guardado continua somado no Caixa total (sem contar os rendimentos, que o extrato não mostra). Aporte é dinheiro seu ou da família que entrou. Para fechar outubro em diante, importe o extrato novo.</p>`;
 }
 function modalCaixaMes(k) {
