@@ -1545,24 +1545,30 @@ function freteRecente(itemId) {
   return u.length ? Math.round(u.reduce((t, x) => t + x[1], 0) / u.length * 100) / 100 : null;
 }
 /* o que o ML diz para o produto: o anúncio ativo com pedido mais recente (preço, taxa e frete recente) */
-/* estoque que cada anúncio deve mostrar: o do site, dividido igualmente quando o produto tem vários anúncios ativos (evita vender o mesmo estoque duas vezes) */
+/* estoque que cada anúncio deve mostrar: o do site. Anúncios ligados do mesmo produto usam o mesmo estoque, então todos mostram o mesmo número */
 function cotaAnuncio(a) {
   const p = anuncioProduto(a); if (!p) return null;
   const site = unidadesDisponiveis(p.id).length;
   const irm = (mapaAnuncios()[p.id] || []).filter(x => x.status === 'active' && !x.tem_variacoes);
   if (!irm.some(x => x.item_id === a.item_id)) irm.push(a);
   irm.sort((x, y) => x.item_id.localeCompare(y.item_id));
-  const n = irm.length, base = Math.floor(site / n), extra = site - base * n;
-  return { site, n, cota: base + (irm.findIndex(x => x.item_id === a.item_id) < extra ? 1 : 0), p };
+  return { site, n: irm.length, cota: site, p };
 }
 /* anúncios "irmãos": todos os anúncios (ativos ou pausados) do mesmo produto. No ML eles andam juntos: pausar, preço e estoque valem para todos */
 const irmaosAnuncio = a => { const p = anuncioProduto(a); if (!p) return [a]; const m = (mapaAnuncios()[p.id] || []).filter(x => !x.tem_variacoes); return m.some(x => x.item_id === a.item_id) ? m : [a, ...m]; };
 /* frete que o vendedor paga: o dos últimos pedidos do anúncio; se ele ainda não vendeu, o do anúncio irmão; depois, o das unidades em estoque */
 function freteEstimado(a, p) {
-  const f = freteRecente(a.item_id); if (f != null) return { v: f, origem: 'pedidos deste anúncio' };
-  for (const x of irmaosAnuncio(a)) { const g = freteRecente(x.item_id); if (g != null) return { v: g, origem: 'pedidos do anúncio irmão' }; }
-  const us = p ? DB.estoque.filter(u => u.produto === p.id && u.status === 'avenda' && u.frete != null) : [];
-  if (us.length) return { v: sum(us, u => u.frete) / us.length, origem: 'unidades em estoque' };
+  const ids = new Set(irmaosAnuncio(a).map(x => x.item_id)), lim = new Date(Date.now() - 90 * 864e5).toISOString(), v = [];
+  for (const o of ML.pedidos || []) {
+    if (!pedidoValido(o) || o.frete_vendedor == null || o.date_created < lim) continue;
+    const it = (o.items || []).find(i => ids.has(i.item_id));
+    if (it) v.push([o.date_created, Number(o.frete_vendedor) / Math.max(1, qtdLiquida(o, it))]);
+  }
+  v.sort((x, y) => y[0].localeCompare(x[0]));
+  const u = v.slice(0, 15).map(x => x[1]).sort((x, y) => x - y);
+  if (u.length) { const m = u.length >> 1, med = u.length % 2 ? u[m] : (u[m - 1] + u[m]) / 2; return { v: Math.round(med * 100) / 100, origem: `mediana dos ${u.length} últimos pedidos dos anúncios ligados` }; }
+  const us = p ? DB.estoque.filter(x => x.produto === p.id && x.status === 'avenda' && x.frete != null) : [];
+  if (us.length) return { v: sum(us, x => x.frete) / us.length, origem: 'unidades em estoque' };
   return { v: 0, origem: 'sem dados' };
 }
 function margemAnuncio(a, p) {
@@ -1631,9 +1637,9 @@ function cardAnuncios() {
   const tabela = !ML.anuncios ? '<p class="hint" style="margin-top:12px">Aperte "Atualizar anúncios do ML" para carregar os anúncios (também carregam sozinhos ao abrir o site).</p>'
     : `<div class="table-wrap livre" style="margin-top:14px;max-height:520px;overflow:auto"><table><thead><tr><th>Anúncio</th><th>Produto</th><th>Situação</th><th class="num">Preço ML</th><th class="num">Taxa</th><th class="num">Custo</th><th class="num">Margem est.</th><th class="num">Estoque ML</th><th class="num">Estoque site</th><th></th></tr></thead><tbody>
       ${linhas.length ? linhas.map(l => { const a = l.a, mexe = a.status === 'active' || a.status === 'paused', ativo = a.status === 'active';
-        return `<tr class="clic" data-action="mlAbrirAnuncio" data-item="${esc(a.item_id)}"><td>${esc((a.titulo || '').slice(0, 54))}</td><td>${l.p ? esc(l.p.nome.slice(0, 28)) : '<span class="chip c-orange">sem vínculo</span>'}</td><td>${chipSt(a.status)}</td><td class="num">${brl(a.preco)}</td><td class="num">${a.taxa_pct != null ? pct(a.taxa_pct) : '—'}</td><td class="num">${l.mg ? brl(l.mg.custo) : '—'}</td><td class="num ${l.mg && l.mg.lucro < 0 ? 'neg' : ''}" title="${l.mg ? 'Lucro estimado por unidade: ' + brl(l.mg.lucro) : ''}">${l.mg ? pct(l.mg.margem) : '—'}</td><td class="num">${a.qtd ?? '—'}</td><td class="num ${diverge(l) ? 'neg' : ''}" title="${l.c && l.c.n > 1 ? 'Dividido entre ' + l.c.n + ' anúncios ativos do mesmo produto' : ''}">${l.c ? (l.c.n > 1 && ativo ? `${l.c.cota} <span class="hint">de ${l.site}</span>` : l.site) : '—'}</td>
+        return `<tr class="clic" data-action="mlAbrirAnuncio" data-item="${esc(a.item_id)}"><td>${esc((a.titulo || '').slice(0, 54))}</td><td>${l.p ? esc(l.p.nome.slice(0, 28)) : '<span class="chip c-orange">sem vínculo</span>'}</td><td>${chipSt(a.status)}</td><td class="num">${brl(a.preco)}</td><td class="num">${a.taxa_pct != null ? pct(a.taxa_pct) : '—'}</td><td class="num">${l.mg ? brl(l.mg.custo) : '—'}</td><td class="num ${l.mg && l.mg.lucro < 0 ? 'neg' : ''}" title="${l.mg ? 'Lucro estimado por unidade: ' + brl(l.mg.lucro) : ''}">${l.mg ? pct(l.mg.margem) : '—'}</td><td class="num">${a.qtd ?? '—'}</td><td class="num ${diverge(l) ? 'neg' : ''}" title="${l.c && l.c.n > 1 ? 'Estoque compartilhado: os ' + l.c.n + ' anúncios ligados puxam do mesmo estoque' : ''}">${l.c ? l.site : '—'}</td>
         <td style="white-space:nowrap">${mexe ? `<button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}" title="${ativo ? 'Pausar' : 'Ativar'}${l.c && l.c.n > 1 ? ' os anúncios ligados deste produto' : ' anúncio'}" aria-label="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" ${off}>${ic(ativo ? 'pause' : 'play', 18)}</button> ` : ''}${l.p && mexe ? `<button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlEnviarUm" data-item="${esc(a.item_id)}" title="Enviar estoque ao ML" aria-label="Enviar estoque ao ML" ${off}>${ic('box', 18)}</button> <button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlEnviarValor" data-item="${esc(a.item_id)}" title="Enviar valor de venda ao ML" aria-label="Enviar valor de venda ao ML" ${off}>${ic('cash', 18)}</button>` : ''}</td></tr>`; }).join('') : vazioLinha(10, 'Nenhum anúncio neste filtro.')}
-      </tbody></table></div><p class="hint" style="margin-top:6px">${plural(cont.ativos, 'anúncio ativo', 'anúncios ativos')} e ${cont.pausados} pausado(s). Clique numa linha para ver os detalhes. Preço, taxa e frete dos ativos vêm do ML e atualizam as unidades à venda sozinhos. Estoque, valor e ativar/pausar só mudam no ML quando você confirma. Produto com vários anúncios ativos tem o estoque dividido entre eles.</p>`;
+      </tbody></table></div><p class="hint" style="margin-top:6px">${plural(cont.ativos, 'anúncio ativo', 'anúncios ativos')} e ${cont.pausados} pausado(s). Clique numa linha para ver os detalhes. Preço, taxa e frete dos ativos vêm do ML e atualizam as unidades à venda sozinhos. Estoque, valor e ativar/pausar só mudam no ML quando você confirma. Anúncios ligados do mesmo produto usam o mesmo estoque: o ML mostra o mesmo número nos dois.</p>`;
   return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Anúncios do ML e estoque</h2></div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
       <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" data-action="mlAnuncios" ${off}>Atualizar anúncios do ML</button>
@@ -1659,7 +1665,7 @@ function modalAnuncio(itemId) {
       <div class="stat"><span>Margem estimada</span><b class="${mg && mg.lucro < 0 ? 'neg' : ''}">${mg ? `${pct(mg.margem)} · ${brl(mg.lucro)}` : '—'}</b></div></div>
     <div class="form-grid">${campo('an-vinc', 'Produto vinculado', `<input id="an-vinc" list="dl-anv" value="${esc(p ? labelProduto(p) : (sug ? labelProduto(sug) : ''))}" autocomplete="off" placeholder="Escolha o produto">${datalistProdutos('dl-anv', false)}`, 'full')}</div>
     <p class="hint" style="margin:-4px 0 12px"><button class="btn btn-sm btn-soft" data-action="mlVincularAnuncio" data-item="${esc(a.item_id)}">${p ? 'Trocar vínculo' : 'Vincular'}</button> ${p ? '' : 'Sem vínculo, preço, taxa e estoque deste anúncio não sincronizam.'}</p>
-    ${p ? `<div class="form-grid">${campo('an-qtd', cx.n > 1 ? `Quantidade a enviar neste anúncio (sua parte de ${site}, dividido entre ${cx.n} anúncios)` : 'Quantidade a enviar ao ML', `<input id="an-qtd" type="number" min="0" value="${cx.cota}">`)}</div>` : ''}
+    ${p ? `<div class="form-grid">${campo('an-qtd', cx.n > 1 ? `Quantidade a enviar (vale para os ${cx.n} anúncios ligados, que usam o mesmo estoque)` : 'Quantidade a enviar ao ML', `<input id="an-qtd" type="number" min="0" value="${cx.cota}">`)}</div>` : ''}
     <p class="hint">${esc(a.item_id)}${a.tipo ? ` · tipo ${esc(a.tipo)}` : ''}${a.frete_gratis ? ' · frete grátis' : ''} · <a href="${link}" target="_blank" rel="noopener">Abrir no Mercado Livre</a></p>`;
   abrirModal({
     titulo: 'Anúncio do ML', corpo, largura: 700,
@@ -1667,7 +1673,7 @@ function modalAnuncio(itemId) {
     onConfirm: () => {
       const q = parseInt(val('an-qtd'), 10);
       if (!(q >= 0)) return erro('Confira a quantidade.');
-      const itens = irmaosAnuncio(a).filter(x => x.status === 'active' || x.status === 'paused').map(x => ({ item_id: x.item_id, qtd: x.item_id === a.item_id ? q : cotaAnuncio(x)?.cota ?? 0 }));
+      const itens = irmaosAnuncio(a).filter(x => x.status === 'active' || x.status === 'paused').map(x => ({ item_id: x.item_id, qtd: q }));
       confirmar('Enviar estoque ao ML', `Enviar estoque para <b>${plural(itens.length, 'anúncio', 'anúncios')}</b> deste produto: ${itens.map(x => `${esc(((ML.anuncios.find(y => y.item_id === x.item_id) || {}).titulo || '').slice(0, 30))} → <b>${x.qtd}</b>`).join('; ')}.${itens.some(x => x.qtd === 0) ? ' Com 0, o ML pausa o anúncio.' : ''}`, () => enviarEstoqueML(itens), { texto: 'Enviar' });
     },
   });
@@ -1727,9 +1733,9 @@ function modalEnviarEstoqueML() {
   const porProd = {};
   const todas = an.map(a => { const p = anuncioProduto(a); if (p) (porProd[p.id] = porProd[p.id] || []).push(a); return { a, p }; }).filter(x => x.p);
   const linhas = todas.map(x => { const c = cotaAnuncio(x.a); return { ...x, site: c.cota, total: c.site, varios: c.n > 1 }; }).filter(x => x.a.qtd !== x.site);
-  const corpo = linhas.length ? `<p class="muted" style="margin:0 0 10px;line-height:1.5">Só anúncios <b>ativos</b>. O ML já desconta o que vende; aqui vai o estoque à venda do site (sem os separados). Quando o produto tem vários anúncios ativos, o estoque é <b>dividido igualmente</b> entre eles, para não vender o mesmo item duas vezes. Ajuste se quiser e marque o que enviar. Quantidade 0 faz o ML pausar o anúncio.</p>
+  const corpo = linhas.length ? `<p class="muted" style="margin:0 0 10px;line-height:1.5">Só anúncios <b>ativos</b>. O ML já desconta o que vende; aqui vai o estoque à venda do site (sem os separados). Anúncios ligados do mesmo produto usam o <b>mesmo estoque</b>, então todos recebem o mesmo número. Ajuste se quiser e marque o que enviar. Quantidade 0 faz o ML pausar o anúncio.</p>
     <div class="table-wrap" style="max-height:52vh;overflow:auto"><table><thead><tr><th></th><th>Anúncio</th><th>Produto</th><th class="num">ML</th><th class="num">Site</th><th>Enviar</th></tr></thead><tbody id="ee-corpo">
-    ${linhas.map(l => `<tr data-item="${esc(l.a.item_id)}"><td><input type="checkbox" class="ee-ck" checked aria-label="Enviar"></td><td>${esc((l.a.titulo || '').slice(0, 48))}${l.varios ? ' <span class="chip c-orange">dividido</span>' : ''}</td><td class="muted">${esc(l.p.nome.slice(0, 28))}</td><td class="num">${l.a.qtd ?? '—'}</td><td class="num"><b>${l.site}</b>${l.varios ? ` <span class="hint">de ${l.total}</span>` : ''}</td><td><input class="ee-q" type="number" min="0" value="${l.site}" style="width:72px"></td></tr>`).join('')}
+    ${linhas.map(l => `<tr data-item="${esc(l.a.item_id)}"><td><input type="checkbox" class="ee-ck" checked aria-label="Enviar"></td><td>${esc((l.a.titulo || '').slice(0, 48))}${l.varios ? ' <span class="chip c-orange">ligado</span>' : ''}</td><td class="muted">${esc(l.p.nome.slice(0, 28))}</td><td class="num">${l.a.qtd ?? '—'}</td><td class="num"><b>${l.site}</b></td><td><input class="ee-q" type="number" min="0" value="${l.site}" style="width:72px"></td></tr>`).join('')}
     </tbody></table></div>`
     : '<p class="muted">O estoque de todos os anúncios ativos vinculados já está igual ao do site.</p>';
   abrirModal({
@@ -2078,7 +2084,7 @@ async function mlPoll() {
       const r = mlLancarSeguras(l => novos.has(l.o.id));
       const f = mlFretesNasUnidades();
       const n = mlNotificarPedidos(novos);
-      if (r.novas + r.vinc + r.novas_boni + f + n) commit();
+      const apF = aplicarAnuncios(); if (r.novas + r.vinc + r.novas_boni + f + n + apF.mudou) commit();
       recalcPendencias();
       if (['hoje', 'estoque', 'produtos'].includes(UI.view)) render();
     }
@@ -3511,7 +3517,7 @@ const ACOES = {
     const p = anuncioProduto(a); if (!p) return erro('Este anúncio não está vinculado a um produto.');
     const itens = irmaosAnuncio(a).filter(x => x.status === 'active' || x.status === 'paused').map(x => ({ item_id: x.item_id, qtd: cotaAnuncio(x)?.cota ?? 0, t: x.titulo }));
     const site = unidadesDisponiveis(p.id).length;
-    confirmar('Enviar estoque ao ML', `<b>${esc(p.nome)}</b>: ${site} unidade(s) no site${itens.length > 1 ? `, dividido entre os ${itens.length} anúncios ligados` : ''}.<br>${itens.map(x => `${esc((x.t || '').slice(0, 44))} → <b>${x.qtd}</b>`).join('<br>')}${itens.some(x => x.qtd === 0) ? '<br><br>Com 0, o ML pausa o anúncio.' : ''}`, () => enviarEstoqueML(itens.map(({ item_id, qtd }) => ({ item_id, qtd }))), { texto: 'Enviar' });
+    confirmar('Enviar estoque ao ML', `<b>${esc(p.nome)}</b>: ${site} unidade(s) no site${itens.length > 1 ? `, o mesmo número nos ${itens.length} anúncios ligados (estoque compartilhado)` : ''}.<br>${itens.map(x => `${esc((x.t || '').slice(0, 44))} → <b>${x.qtd}</b>`).join('<br>')}${itens.some(x => x.qtd === 0) ? '<br><br>Com 0, o ML pausa o anúncio.' : ''}`, () => enviarEstoqueML(itens.map(({ item_id, qtd }) => ({ item_id, qtd }))), { texto: 'Enviar' });
   },
   rentOrdenar: el => { const U = UI.rent, c = el.dataset.col; U.dir = U.ordem === c && U.dir === 'desc' ? 'asc' : 'desc'; U.ordem = c; render(); },
   dreImposto: () => { const n = parseNum(val('dre-imp')); if (Number.isNaN(n) || n < 0 || n > 60) return erro('Confira o percentual.'); DB.config.impostoPct = n || 0; commit(n ? `Imposto estimado: ${fmtIn(n)}%` : 'Imposto estimado removido'); },
