@@ -105,3 +105,13 @@ revoke all on all sequences in schema public from anon, authenticated;
 alter default privileges in schema public revoke all on tables from anon, authenticated;
 alter default privileges in schema public revoke all on sequences from anon, authenticated;
 revoke execute on function bo_cobrancas_resumo() from public, anon, authenticated;
+
+-- Resumo da fatura do ML por mês da fatura, separando o que é debitado na venda (YES) do que você paga por fora (NO)
+drop function if exists bo_cobrancas_resumo();
+create or replace function bo_cobrancas_resumo() returns table(mes text, subtipo text, descricao text, marketplace text, debitado text, qtd bigint, valor numeric)
+language sql stable as $$
+  select to_char(coalesce(c.periodo, c.criado::date), 'YYYY-MM'), c.subtipo, max(c.descricao), max(c.marketplace), coalesce(c.debitado, '?'), count(*),
+         sum(case when c.tipo = 'CHARGE' then c.valor else -c.valor end)
+  from ml_cobrancas c where coalesce(c.periodo, c.criado::date) is not null group by 1, 2, 5 order by 1 desc, 7 desc;
+$$;
+revoke execute on function bo_cobrancas_resumo() from public, anon, authenticated;

@@ -1306,7 +1306,7 @@ function dreLinhas(ano, m) {
     ['Receita líquida', x => cm(x).liq, 'b'],
     ['(−) Custo das mercadorias vendidas', x => x.cmv],
     ['Lucro bruto', x => cm(x).lb, 'b'],
-    ['(−) Publicidade e marketing do ML', x => x.mkt], ['(−) Outras cobranças do ML', x => x.outrasMl],
+    ['(−) Publicidade e Minha página do ML (pago por fora)', x => x.mkt], ['(−) Outras cobranças pagas por fora ao ML (devolução, impostos)', x => x.outrasMl],
     ['(+) Outras receitas (lançadas à mão)', x => x.rec],
     ...cats.map(ct => [`(−) Despesas: ${ct}`, x => x.desp[ct] || 0, 'sub']),
     ...(DB.config.impostoPct ? [[`(−) Impostos estimados (${fmtIn(DB.config.impostoPct)}%)`, x => cm(x).imp]] : []),
@@ -1331,7 +1331,7 @@ function vDRE() {
   ${keys.length ? `<div class="table-wrap livre"><table><thead><tr><th></th>${keys.map(k => `<th class="num">${MESES[+k.slice(5, 7) - 1].slice(0, 3)}</th>`).join('')}<th class="num">Total ${U.ano}</th></tr></thead><tbody>
   ${L.map(([rot, f, t = '']) => `<tr class="${t.includes('total') ? 'total' : ''} ${t.includes('sub') ? 'sub' : ''}"><td>${t.includes('b') ? `<b style="font-weight:500">${rot}</b>` : rot}</td>${keys.map(k => cel(m[k], f, t)).join('')}${cel(soma, f, t)}</tr>`).join('')}
   </tbody></table></div>` : '<div class="table-wrap livre"><table><tbody>' + vazioLinha(3, 'Sem movimento neste ano.') + '</tbody></table></div>'}
-  <p class="note">Faturamento e custo entram no mês da venda. Tarifas e fretes são os reais de cada pedido. "Outras cobranças do ML" são parcelamento, Mercado Pago, publicidade e outras taxas da fatura que não estão na tarifa de venda. Consumo próprio e perdas aparecem a custo, depois do resultado operacional, para não distorcer o custo das mercadorias vendidas.</p></div>`;
+  <p class="note">Faturamento e custo entram no mês da venda. Tarifas e fretes são os reais de cada pedido. Do ML entra só o que você paga de fato à parte (os "Pagamentos feitos" da fatura: publicidade, Minha página, devolução e impostos cobrados por fora). Parcelamento, custo do Mercado Pago, frete e cancelamentos são debitados na própria venda e já estão na tarifa e no frete de cada pedido. Consumo próprio e perdas aparecem a custo, depois do resultado operacional, para não distorcer o custo das mercadorias vendidas.</p></div>`;
 }
 
 /* ---------- Fluxo de caixa (visão mensal + lançamentos manuais de despesas e receitas) ---------- */
@@ -1376,7 +1376,7 @@ function fluxoLancamentos(m) {
     ${lista.map(({ t, d }) => `<tr class="clic" data-action="${t === 'desp' ? 'editarDespesa' : 'editarReceita'}" data-id="${d.id}"><td class="muted">${fdata(d.data)}</td><td>${t === 'desp' ? '<span class="chip c-red">Despesa</span>' : '<span class="chip c-green">Receita</span>'}</td><td>${esc(d.nome)}</td><td class="muted">${esc(d.categoria || '—')}</td><td class="num ${t === 'desp' ? 'neg' : ''}">${t === 'desp' ? '−' : '+'} ${brl(d.valor)}</td><td><div class="row-actions"><button class="ghost-ic" data-action="${t === 'desp' ? 'editarDespesa' : 'editarReceita'}" data-id="${d.id}" aria-label="Editar">${ic('edit', 16)}</button></div></td></tr>`).join('') || vazioLinha(6, 'Nenhum lançamento neste período. Lance embalagens, contador, impostos e qualquer receita que não venha das vendas.')}
     ${lista.length ? `<tr class="total"><td colspan="4">Receitas ${brl(tot('rec'))} − despesas ${brl(tot('desp'))}</td><td class="num ${tot('rec') - tot('desp') < 0 ? 'neg' : ''}">${brl(tot('rec') - tot('desp'))}</td><td></td></tr>` : ''}
     </tbody></table></div></div>
-  <div><div class="card side-card"><div class="side-head"><h2>Despesas por categoria</h2></div>${catLista('desp')}<p class="hint" style="margin:10px 0 0">O ML cobrou <b>${brl(ml)}</b> no período (já entra no DRE, não precisa lançar)</p></div>
+  <div><div class="card side-card"><div class="side-head"><h2>Despesas por categoria</h2></div>${catLista('desp')}<p class="hint" style="margin:10px 0 0">Pago por fora ao ML no período: <b>${brl(ml)}</b> (publicidade, Minha página etc.; já entra no DRE, não precisa lançar)</p></div>
     <div class="card side-card" style="margin-top:18px"><div class="side-head"><h2>Receitas por categoria</h2></div>${catLista('rec')}<p class="hint" style="margin:10px 0 0">Aportes só entram no caixa, não no lucro.</p></div></div></div>`;
 }
 function modalReceita(id = null) {
@@ -2174,8 +2174,10 @@ function vHoje() {
    Publicidade (Product Ads) pela API de anúncios + cobranças da fatura do ML (tarifas, envio, parcelamento, Mercado Pago, Minha página...)
    ========================================================= */
 const ehMarketing = c => c.subtipo === 'PADS' || c.marketplace === 'ESHOP' || /publicidade|campanha|cupom|an[uú]ncio|patroc/i.test(c.descricao || '');
-// o lucro do site já desconta a tarifa de venda e o frete de cada pedido; o resto da fatura do ML não está nele
-const jaNoLucro = c => c.subtipo === 'CVVML' || (c.marketplace === 'SHIPPING' && c.subtipo !== 'CDSDB');
+/* O que entra no DRE é só o que você paga de fato à parte ("Pagamentos feitos" da fatura): publicidade, Minha página, devolução, impostos cobrados por fora.
+   O que o ML debita na própria operação de venda (tarifa de venda, frete, parcelamento, custo do Mercado Pago, cancelamentos) já está no lucro de cada venda.
+   O campo "debitado" vem do ML: YES = debitado na operação, NO = pago por fora, INAPPLICABLE = cancelamentos (só os de marketing abatem o que você paga). */
+const jaNoLucro = c => { const d = c.debitado; if (d === 'NO') return false; if (d === 'YES') return true; return !ehMarketing(c); };
 const esperar = ms => new Promise(r => setTimeout(r, ms));
 /* publicidade e cobranças do ML: atualiza sozinho (no máximo de 6 em 6 horas), sem precisar clicar */
 async function mktAuto() {
@@ -2256,11 +2258,11 @@ function vMarketing() {
   <section class="block"><div class="sec-head"><h2>Investimento por dia</h2><span class="hint">${nomeMes(mes)}</span></div>${dias.length ? barras('custo', maxC, 'var(--accent-2)') : '<p class="hint">Sem dados de anúncios neste mês.</p>'}
     <div class="sec-head" style="margin-top:18px"><h2>Vendas atribuídas aos anúncios por dia</h2></div>${dias.length ? barras('vendas', maxV, '#14958a') : ''}</section>
   <section class="block"><div class="sec-head"><h2>Tudo que o ML cobrou em ${nomeMes(mes)}</h2><span class="hint">${brl(faturado)} no total · faturamento do mês ${brl(fatML)}</span></div>
-    <div class="table-wrap livre"><table><thead><tr><th>Cobrança</th><th>Código</th><th class="num">Qtd</th><th class="num">Valor</th><th class="num">% do faturamento</th><th>No lucro do site?</th></tr></thead><tbody>
-    ${C.sort((a, b) => b.valor - a.valor).map(c => `<tr><td>${esc(c.descricao || '—')}${ehMarketing(c) ? ' <span class="chip c-purple">marketing</span>' : ''}</td><td class="muted">${esc(c.subtipo || '')}</td><td class="num">${c.qtd}</td><td class="num">${brl(c.valor)}</td><td class="num">${pct(fatML ? c.valor / fatML : null)}</td><td>${jaNoLucro(c) ? '<span class="chip c-green">já descontado</span>' : '<span class="chip c-orange">fora do lucro</span>'}</td></tr>`).join('') || vazioLinha(6, 'Sem cobranças neste mês. Clique em Atualizar cobranças.')}
-    </tbody></table></div><p class="hint" style="margin-top:8px">O lucro das vendas no site considera a tarifa de venda e o frete de cada pedido. O que está marcado "fora do lucro" (parcelamento, Mercado Pago, anúncios, manutenção da loja, devoluções...) é cobrado na fatura mas não entra na conta de cada venda.</p></section>
+    <div class="table-wrap livre"><table><thead><tr><th>Cobrança</th><th>Código</th><th class="num">Qtd</th><th class="num">Valor</th><th class="num">% do faturamento</th><th>Como o ML cobra</th></tr></thead><tbody>
+    ${C.sort((a, b) => b.valor - a.valor).map(c => `<tr><td>${esc(c.descricao || '—')}${ehMarketing(c) ? ' <span class="chip c-purple">marketing</span>' : ''}</td><td class="muted">${esc(c.subtipo || '')}</td><td class="num">${c.qtd}</td><td class="num">${brl(c.valor)}</td><td class="num">${pct(fatML ? c.valor / fatML : null)}</td><td>${jaNoLucro(c) ? '<span class="chip c-green">debitado na venda</span>' : '<span class="chip c-orange">você paga por fora</span>'}</td></tr>`).join('') || vazioLinha(6, 'Sem cobranças neste mês. Clique em Atualizar cobranças.')}
+    </tbody></table></div><p class="hint" style="margin-top:8px">O ML debita da própria venda a tarifa, o frete, o parcelamento, o custo do Mercado Pago e os cancelamentos: isso já está no lucro de cada venda e <b>não</b> entra no DRE. O que você paga por fora (publicidade, Minha página, devolução e impostos cobrados à parte, os "Pagamentos feitos" da fatura) é o que entra.</p></section>
   <section class="block"><div class="sec-head"><h2>Mês a mês</h2></div>
-    <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Anúncios (custo)</th><th class="num">Vendas pelos anúncios</th><th class="num">ACOS</th><th class="num">Extras do ML fora do lucro</th><th class="num">% do faturamento</th></tr></thead><tbody>
+    <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Anúncios (custo)</th><th class="num">Vendas pelos anúncios</th><th class="num">ACOS</th><th class="num">Pago por fora ao ML</th><th class="num">% do faturamento</th></tr></thead><tbody>
     ${linhas.map(l => `<tr class="clic" data-action="set" data-path="mkt.mes" data-value="${l.m}"><td>${nomeMes(l.m)}</td><td class="num">${brl(l.ca)}</td><td class="num">${brl(l.va)}</td><td class="num">${pct(l.va ? l.ca / l.va : null)}</td><td class="num">${brl(l.ex)}</td><td class="num">${pct(l.fat ? l.ex / l.fat : null)}</td></tr>`).join('') || vazioLinha(6, 'Sem dados ainda.')}
     </tbody></table></div></section></div>`;
 }
