@@ -1555,10 +1555,20 @@ function cotaAnuncio(a) {
   const n = irm.length, base = Math.floor(site / n), extra = site - base * n;
   return { site, n, cota: base + (irm.findIndex(x => x.item_id === a.item_id) < extra ? 1 : 0), p };
 }
+/* anúncios "irmãos": todos os anúncios (ativos ou pausados) do mesmo produto. No ML eles andam juntos: pausar, preço e estoque valem para todos */
+const irmaosAnuncio = a => { const p = anuncioProduto(a); if (!p) return [a]; const m = (mapaAnuncios()[p.id] || []).filter(x => !x.tem_variacoes); return m.some(x => x.item_id === a.item_id) ? m : [a, ...m]; };
+/* frete que o vendedor paga: o dos últimos pedidos do anúncio; se ele ainda não vendeu, o do anúncio irmão; depois, o das unidades em estoque */
+function freteEstimado(a, p) {
+  const f = freteRecente(a.item_id); if (f != null) return { v: f, origem: 'pedidos deste anúncio' };
+  for (const x of irmaosAnuncio(a)) { const g = freteRecente(x.item_id); if (g != null) return { v: g, origem: 'pedidos do anúncio irmão' }; }
+  const us = p ? DB.estoque.filter(u => u.produto === p.id && u.status === 'avenda' && u.frete != null) : [];
+  if (us.length) return { v: sum(us, u => u.frete) / us.length, origem: 'unidades em estoque' };
+  return { v: 0, origem: 'sem dados' };
+}
 function margemAnuncio(a, p) {
   const us = DB.estoque.filter(u => u.produto === p.id && u.status === 'avenda' && u.custo != null);
   const custo = us.length ? sum(us, u => u.custo) / us.length : null; if (custo == null || !a.preco) return null;
-  const taxa = a.taxa_pct != null ? Number(a.taxa_pct) : DB.config.taxaPadrao, frete = freteRecente(a.item_id) ?? 0;
+  const taxa = a.taxa_pct != null ? Number(a.taxa_pct) : DB.config.taxaPadrao, frete = freteEstimado(a, p).v;
   const lucroU = a.preco * (1 - taxa) - frete - custo;
   return { custo, lucro: lucroU, margem: lucroU / a.preco };
 }
@@ -1567,7 +1577,7 @@ function alvoML(pid) {
   const ult = {};
   for (const o of ML.pedidos || []) for (const it of o.items || []) if (!ult[it.item_id] || o.date_created > ult[it.item_id]) ult[it.item_id] = o.date_created;
   const a = [...as].sort((x, y) => (ult[y.item_id] || '').localeCompare(ult[x.item_id] || '') || x.preco - y.preco)[0];
-  return { a, venda: Number(a.preco), taxa: a.taxa_pct != null ? Math.round(Number(a.taxa_pct) * 1e5) / 1e5 : null, frete: freteRecente(a.item_id) };
+  return { a, venda: Number(a.preco), taxa: a.taxa_pct != null ? Math.round(Number(a.taxa_pct) * 1e5) / 1e5 : null, frete: (fe => fe.origem === 'sem dados' ? null : fe.v)(freteEstimado(a, anuncioProduto(a))) };
 }
 function aplicarAnuncios() {
   const porProd = {};
@@ -1622,7 +1632,7 @@ function cardAnuncios() {
     : `<div class="table-wrap livre" style="margin-top:14px;max-height:520px;overflow:auto"><table><thead><tr><th>Anúncio</th><th>Produto</th><th>Situação</th><th class="num">Preço ML</th><th class="num">Taxa</th><th class="num">Custo</th><th class="num">Margem est.</th><th class="num">Estoque ML</th><th class="num">Estoque site</th><th></th></tr></thead><tbody>
       ${linhas.length ? linhas.map(l => { const a = l.a, mexe = a.status === 'active' || a.status === 'paused', ativo = a.status === 'active';
         return `<tr class="clic" data-action="mlAbrirAnuncio" data-item="${esc(a.item_id)}"><td>${esc((a.titulo || '').slice(0, 54))}</td><td>${l.p ? esc(l.p.nome.slice(0, 28)) : '<span class="chip c-orange">sem vínculo</span>'}</td><td>${chipSt(a.status)}</td><td class="num">${brl(a.preco)}</td><td class="num">${a.taxa_pct != null ? pct(a.taxa_pct) : '—'}</td><td class="num">${l.mg ? brl(l.mg.custo) : '—'}</td><td class="num ${l.mg && l.mg.lucro < 0 ? 'neg' : ''}" title="${l.mg ? 'Lucro estimado por unidade: ' + brl(l.mg.lucro) : ''}">${l.mg ? pct(l.mg.margem) : '—'}</td><td class="num">${a.qtd ?? '—'}</td><td class="num ${diverge(l) ? 'neg' : ''}" title="${l.c && l.c.n > 1 ? 'Dividido entre ' + l.c.n + ' anúncios ativos do mesmo produto' : ''}">${l.c ? (l.c.n > 1 && ativo ? `${l.c.cota} <span class="hint">de ${l.site}</span>` : l.site) : '—'}</td>
-        <td style="white-space:nowrap">${mexe ? `<button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}" title="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" aria-label="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" ${off}>${ic(ativo ? 'pause' : 'play', 18)}</button> ` : ''}${l.p && mexe ? `<button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlEnviarUm" data-item="${esc(a.item_id)}" title="Enviar estoque ao ML" aria-label="Enviar estoque ao ML" ${off}>${ic('box', 18)}</button> <button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlEnviarValor" data-item="${esc(a.item_id)}" title="Enviar valor de venda ao ML" aria-label="Enviar valor de venda ao ML" ${off}>${ic('cash', 18)}</button>` : ''}</td></tr>`; }).join('') : vazioLinha(10, 'Nenhum anúncio neste filtro.')}
+        <td style="white-space:nowrap">${mexe ? `<button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}" title="${ativo ? 'Pausar' : 'Ativar'}${l.c && l.c.n > 1 ? ' os anúncios ligados deste produto' : ' anúncio'}" aria-label="${ativo ? 'Pausar anúncio' : 'Ativar anúncio'}" ${off}>${ic(ativo ? 'pause' : 'play', 18)}</button> ` : ''}${l.p && mexe ? `<button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlEnviarUm" data-item="${esc(a.item_id)}" title="Enviar estoque ao ML" aria-label="Enviar estoque ao ML" ${off}>${ic('box', 18)}</button> <button class="ghost-ic" style="display:inline-grid;color:var(--text)" data-action="mlEnviarValor" data-item="${esc(a.item_id)}" title="Enviar valor de venda ao ML" aria-label="Enviar valor de venda ao ML" ${off}>${ic('cash', 18)}</button>` : ''}</td></tr>`; }).join('') : vazioLinha(10, 'Nenhum anúncio neste filtro.')}
       </tbody></table></div><p class="hint" style="margin-top:6px">${plural(cont.ativos, 'anúncio ativo', 'anúncios ativos')} e ${cont.pausados} pausado(s). Clique numa linha para ver os detalhes. Preço, taxa e frete dos ativos vêm do ML e atualizam as unidades à venda sozinhos. Estoque, valor e ativar/pausar só mudam no ML quando você confirma. Produto com vários anúncios ativos tem o estoque dividido entre eles.</p>`;
   return `<div class="card side-card" style="grid-column:1/-1"><div class="side-head"><h2>Anúncios do ML e estoque</h2></div>
     <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -1633,28 +1643,32 @@ function cardAnuncios() {
 }
 function modalAnuncio(itemId) {
   const a = (ML.anuncios || []).find(x => x.item_id === itemId); if (!a) return;
-  const p = anuncioProduto(a), cx = p ? cotaAnuncio(a) : null, site = cx?.site ?? null, fr = freteRecente(a.item_id), mg = p ? margemAnuncio(a, p) : null;
-  const ativo = a.status === 'active', mexe = ativo || a.status === 'paused';
+  const p = anuncioProduto(a), cx = p ? cotaAnuncio(a) : null, site = cx?.site ?? null, fe = p ? freteEstimado(a, p) : null, mg = p ? margemAnuncio(a, p) : null;
+  const grupo = irmaosAnuncio(a), ativo = a.status === 'active', mexe = ativo || a.status === 'paused', sug = !p ? sugestaoTitulo(a.titulo) : null;
   const link = `https://produto.mercadolivre.com.br/${a.item_id.replace('MLB', 'MLB-')}`;
-  const corpo = `<div class="info">${esc(a.titulo)}</div>
+  const difPreco = new Set(grupo.map(x => Number(x.preco))).size > 1;
+  const blocoGrupo = grupo.length > 1 ? `<div class="info" style="margin-bottom:12px"><b>${grupo.length} anúncios deste produto, ligados</b> (pausar, ativar, valor e estoque valem para todos)<br>${grupo.map(x => `<span class="chip ${x.status === 'active' ? 'c-green' : 'c-orange'}">${x.status === 'active' ? 'Ativo' : 'Inativo'}</span> ${esc((x.titulo || '').slice(0, 58))} · ${brl(x.preco)} · ML ${x.qtd ?? '—'}${x.item_id === a.item_id ? ' <span class="hint">(este)</span>' : ''}`).join('<br>')}${difPreco ? '<br><span class="neg">Os preços estão diferentes entre eles. Use Enviar valor para igualar.</span>' : ''}</div>` : '';
+  const corpo = `<div class="info">${esc(a.titulo)}</div>${blocoGrupo}
     <div class="stat-row">
       <div class="stat"><span>Situação</span><b>${ativo ? 'Ativo' : a.status === 'paused' ? 'Inativo' : esc(a.status || '—')}</b></div>
       <div class="stat"><span>Preço ML</span><b>${brl(a.preco)}</b></div>
       <div class="stat"><span>Taxa</span><b>${a.taxa_pct != null ? pct(a.taxa_pct) : '—'}</b></div>
-      <div class="stat"><span>Frete recente</span><b>${fr != null ? brl(fr) : '—'}</b></div>
+      <div class="stat"><span title="${fe ? esc(fe.origem) : ''}">Frete (${fe ? esc(fe.origem) : '—'})</span><b>${fe && fe.origem !== 'sem dados' ? brl(fe.v) : '—'}</b></div>
       <div class="stat"><span>Estoque no ML</span><b>${a.qtd ?? '—'}</b></div>
       <div class="stat"><span>Estoque no site</span><b>${site ?? '—'}${cx && cx.n > 1 ? ` <span class="hint">(${cx.n} anúncios)</span>` : ''}</b></div>
       <div class="stat"><span>Margem estimada</span><b class="${mg && mg.lucro < 0 ? 'neg' : ''}">${mg ? `${pct(mg.margem)} · ${brl(mg.lucro)}` : '—'}</b></div></div>
-    <div class="form-grid">${campo('an-prod', 'Produto', `<input id="an-prod" value="${esc(p ? labelProduto(p) : 'Sem vínculo com um produto')}" disabled>`, 'full')}</div>
-    ${p ? `<div class="form-grid">${campo('an-qtd', cx.n > 1 ? `Quantidade a enviar ao ML (sua parte de ${site}, dividido entre ${cx.n} anúncios)` : 'Quantidade a enviar ao ML', `<input id="an-qtd" type="number" min="0" value="${cx.cota}">`)}</div>` : `<div class="form-grid">${campo('an-vinc', 'Vincular a um produto', `<input id="an-vinc" list="dl-anv" value="${esc((sugestaoTitulo(a.titulo) ? labelProduto(sugestaoTitulo(a.titulo)) : ''))}" autocomplete="off" placeholder="Escolha o produto">${datalistProdutos('dl-anv', false)}`, 'full')}</div><p class="hint">Sem vínculo, o preço, a taxa e o estoque deste anúncio não sincronizam. <button class="btn btn-sm btn-soft" data-action="mlVincularAnuncio" data-item="${esc(a.item_id)}">Vincular</button></p>`}
+    <div class="form-grid">${campo('an-vinc', 'Produto vinculado', `<input id="an-vinc" list="dl-anv" value="${esc(p ? labelProduto(p) : (sug ? labelProduto(sug) : ''))}" autocomplete="off" placeholder="Escolha o produto">${datalistProdutos('dl-anv', false)}`, 'full')}</div>
+    <p class="hint" style="margin:-4px 0 12px"><button class="btn btn-sm btn-soft" data-action="mlVincularAnuncio" data-item="${esc(a.item_id)}">${p ? 'Trocar vínculo' : 'Vincular'}</button> ${p ? '' : 'Sem vínculo, preço, taxa e estoque deste anúncio não sincronizam.'}</p>
+    ${p ? `<div class="form-grid">${campo('an-qtd', cx.n > 1 ? `Quantidade a enviar neste anúncio (sua parte de ${site}, dividido entre ${cx.n} anúncios)` : 'Quantidade a enviar ao ML', `<input id="an-qtd" type="number" min="0" value="${cx.cota}">`)}</div>` : ''}
     <p class="hint">${esc(a.item_id)}${a.tipo ? ` · tipo ${esc(a.tipo)}` : ''}${a.frete_gratis ? ' · frete grátis' : ''} · <a href="${link}" target="_blank" rel="noopener">Abrir no Mercado Livre</a></p>`;
   abrirModal({
-    titulo: 'Anúncio do ML', corpo, largura: 640,
-    rodape: `<button class="btn btn-soft" data-action="fecharModal">Fechar</button>${mexe ? `<button class="btn" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}">${ic(ativo ? 'pause' : 'play', 16)} ${ativo ? 'Pausar' : 'Ativar'}</button>` : ''}${mexe ? `<button class="btn" data-action="mlEnviarValor" data-item="${esc(a.item_id)}">Enviar valor</button>` : ''}${p && mexe ? '<button class="btn btn-dark" data-action="confirmarModal">Enviar estoque</button>' : ''}`,
+    titulo: 'Anúncio do ML', corpo, largura: 700,
+    rodape: `<button class="btn btn-soft" data-action="fecharModal">Fechar</button>${mexe ? `<button class="btn" data-action="mlAnuncioStatus" data-item="${esc(a.item_id)}" data-to="${ativo ? 'paused' : 'active'}">${ic(ativo ? 'pause' : 'play', 16)} ${ativo ? 'Pausar' : 'Ativar'}${grupo.length > 1 ? ` os ${grupo.length}` : ''}</button><button class="btn" data-action="mlEnviarValor" data-item="${esc(a.item_id)}">${ic('cash', 16)} Enviar valor</button>` : ''}${p && mexe ? `<button class="btn btn-dark" data-action="confirmarModal">${ic('box', 16)} Enviar estoque</button>` : ''}`,
     onConfirm: () => {
       const q = parseInt(val('an-qtd'), 10);
       if (!(q >= 0)) return erro('Confira a quantidade.');
-      confirmar('Enviar estoque ao ML', `Enviar <b>${q}</b> unidade(s) para o anúncio <b>${esc((a.titulo || '').slice(0, 60))}</b>? Hoje o ML mostra ${a.qtd ?? '—'}.${q === 0 ? ' Com 0, o ML pausa o anúncio.' : ''}`, () => enviarEstoqueML([{ item_id: a.item_id, qtd: q }]), { texto: 'Enviar' });
+      const itens = irmaosAnuncio(a).filter(x => x.status === 'active' || x.status === 'paused').map(x => ({ item_id: x.item_id, qtd: x.item_id === a.item_id ? q : cotaAnuncio(x)?.cota ?? 0 }));
+      confirmar('Enviar estoque ao ML', `Enviar estoque para <b>${plural(itens.length, 'anúncio', 'anúncios')}</b> deste produto: ${itens.map(x => `${esc(((ML.anuncios.find(y => y.item_id === x.item_id) || {}).titulo || '').slice(0, 30))} → <b>${x.qtd}</b>`).join('; ')}.${itens.some(x => x.qtd === 0) ? ' Com 0, o ML pausa o anúncio.' : ''}`, () => enviarEstoqueML(itens), { texto: 'Enviar' });
     },
   });
 }
@@ -1683,25 +1697,27 @@ function modalColunasEstoque() {
 }
 function modalEnviarValorML(itemId) {
   const a = (ML.anuncios || []).find(x => x.item_id === itemId); if (!a) return;
-  const p = anuncioProduto(a), n = p ? DB.estoque.filter(u => u.produto === p.id && u.status === 'avenda').length : 0;
+  const p = anuncioProduto(a), grupo = irmaosAnuncio(a).filter(x => x.status === 'active' || x.status === 'paused'), n = p ? DB.estoque.filter(u => u.produto === p.id && u.status === 'avenda').length : 0;
   abrirModal({
-    titulo: 'Enviar valor de venda ao ML', largura: 520,
-    corpo: `<div class="info">${esc(a.titulo)}</div>
+    titulo: 'Enviar valor de venda ao ML', largura: 540,
+    corpo: `<div class="info">${esc(a.titulo)}</div>${grupo.length > 1 ? `<div class="info" style="margin-bottom:12px"><b>${grupo.length} anúncios ligados:</b> o novo valor vale para todos.<br>${grupo.map(x => `${esc((x.titulo || '').slice(0, 56))} · hoje ${brl(x.preco)}`).join('<br>')}</div>` : ''}
       <div class="form-grid">${campo('pv-preco', 'Novo valor de venda (R$)', inputNum('pv-preco', a.preco))}<div class="f"><span class="hint" style="display:block;margin-top:26px">Hoje no ML: <b>${brl(a.preco)}</b></span></div></div>
       <p class="hint" style="margin:0">Atualiza o preço no Mercado Livre e, ${p ? `nas <b>${n}</b> unidades à venda de <b>${esc(p.nome)}</b>` : 'quando o anúncio estiver vinculado, nas unidades do produto'}, o V. Venda e a taxa (que muda com o preço).</p>`,
     onConfirm: () => {
       const v = parseNum(val('pv-preco'));
       if (v == null || Number.isNaN(v) || v <= 0) return erro('Informe o valor.');
-      if (Math.abs(v - a.preco) < 0.005) return erro('O valor é igual ao que já está no ML.');
-      confirmar('Enviar valor ao ML', `Mudar o preço de <b>${esc((a.titulo || '').slice(0, 60))}</b> de ${brl(a.preco)} para <b>${brl(v)}</b> no Mercado Livre agora?`, async () => {
+      const alvo = grupo.filter(x => Math.abs(Number(x.preco) - v) >= 0.005);
+      if (!alvo.length) return erro('Os anúncios já estão com esse valor.');
+      confirmar('Enviar valor ao ML', `Mudar para <b>${brl(v)}</b> no Mercado Livre agora:<br>${alvo.map(x => `${esc((x.titulo || '').slice(0, 56))} (${brl(x.preco)} → ${brl(v)})`).join('<br>')}`, async () => {
         ML.ocupado = true; ML.progresso = 'Enviando valor ao ML...'; render();
-        try {
-          const r = await mlChamar('preco_ml', { item_id: a.item_id, preco: v });
-          Object.assign(a, { preco: r.preco, taxa_valor: r.taxa_valor, taxa_pct: r.taxa_pct });
-          const ap = aplicarAnuncios(); if (ap.mudou) commit();
-          ML.anunciosMsg = `Valor enviado: ${brl(r.preco)} no ML${ap.mudou ? ` e em ${plural(ap.mudou, 'unidade', 'unidades')} do site` : ''}.`; toast(ML.anunciosMsg);
-        } catch (e) { ML.anunciosMsg = `Não foi possível mudar o valor: ${e.message}`; toast(ML.anunciosMsg, true); }
-        ML.ocupado = false; ML.progresso = ''; render();
+        const falhas = []; let ok = 0;
+        for (const x of alvo) {
+          try { const r = await mlChamar('preco_ml', { item_id: x.item_id, preco: v }); Object.assign(x, { preco: r.preco, taxa_valor: r.taxa_valor, taxa_pct: r.taxa_pct }); ok++; }
+          catch (e) { falhas.push(`${(x.titulo || '').slice(0, 30)}: ${e.message}`); }
+        }
+        const ap = aplicarAnuncios(); if (ap.mudou) commit();
+        ML.anunciosMsg = `Valor enviado: ${brl(v)} em ${plural(ok, 'anúncio', 'anúncios')}${ap.mudou ? ` e em ${plural(ap.mudou, 'unidade', 'unidades')} do site` : ''}${falhas.length ? `. Falhou: ${falhas.join(' | ')}` : ''}.`;
+        toast(ML.anunciosMsg, falhas.length > 0); ML.ocupado = false; ML.progresso = ''; render();
       }, { texto: 'Enviar valor' });
     },
   });
@@ -3465,24 +3481,37 @@ const ACOES = {
   mlAbrirAnuncio: el => modalAnuncio(el.dataset.item),
   mlVincularAnuncio: el => {
     const p = produtoPorLabel(val('an-vinc')); if (!p) return erro('Escolha um produto da lista.');
-    (DB.config.mlMapa = DB.config.mlMapa || {})[el.dataset.item] = p.id;
-    const r = aplicarAnuncios(); commit(`Anúncio vinculado a ${p.nome}${r.mudou ? `: ${plural(r.mudou, 'unidade atualizada', 'unidades atualizadas')}` : ''}`); modalAnuncio(el.dataset.item);
+    const mapa = (DB.config.mlMapa = DB.config.mlMapa || {});
+    mapa[el.dataset.item] = p.id;
+    // anúncios soltos que parecem ser o mesmo produto (os "irmãos") vão junto
+    const juntos = (ML.anuncios || []).filter(x => x.item_id !== el.dataset.item && !anuncioProduto(x) && sugestaoTitulo(x.titulo)?.id === p.id);
+    juntos.forEach(x => { mapa[x.item_id] = p.id; });
+    const r = aplicarAnuncios();
+    commit(`Anúncio vinculado a ${p.nome}${juntos.length ? ` (e mais ${plural(juntos.length, 'anúncio parecido', 'anúncios parecidos')})` : ''}${r.mudou ? `: ${plural(r.mudou, 'unidade atualizada', 'unidades atualizadas')}` : ''}`); modalAnuncio(el.dataset.item);
   },
   mlAnuncioStatus: el => {
     const a = (ML.anuncios || []).find(x => x.item_id === el.dataset.item); if (!a) return;
     const para = el.dataset.to, ativar = para === 'active';
-    confirmar(ativar ? 'Ativar anúncio' : 'Pausar anúncio', `${ativar ? 'Ativar' : 'Pausar'} <b>${esc(a.titulo)}</b> no Mercado Livre?${ativar && !(a.qtd > 0) ? ' Ele está com estoque 0 no ML: envie o estoque antes, senão o ML não ativa.' : ''}${ativar ? '' : ' Ele deixa de aparecer para os compradores. O estoque do site não muda.'}`, async () => {
+    const alvo = irmaosAnuncio(a).filter(x => (x.status === 'active' || x.status === 'paused') && x.status !== para);
+    if (!alvo.length) return toast('Os anúncios deste produto já estão assim.');
+    const nomes = alvo.map(x => `<b>${esc((x.titulo || '').slice(0, 56))}</b>`).join('<br>');
+    confirmar(ativar ? 'Ativar anúncios' : 'Pausar anúncios', `${ativar ? 'Ativar' : 'Pausar'} no Mercado Livre${alvo.length > 1 ? ` os <b>${alvo.length} anúncios</b> deste produto (eles andam juntos)` : ''}:<br>${nomes}${ativar && alvo.some(x => !(x.qtd > 0)) ? '<br><br>Tem anúncio com estoque 0 no ML: envie o estoque antes, senão o ML não ativa.' : ''}${ativar ? '' : '<br><br>Eles deixam de aparecer para os compradores. O estoque do site não muda.'}`, async () => {
       ML.ocupado = true; render();
-      try { const r = await mlChamar('anuncio_status', { item_id: a.item_id, status: para }); a.status = r.status; ML.anunciosMsg = `${ativar ? 'Ativado' : 'Pausado'}: ${(a.titulo || '').slice(0, 60)}`; toast(ML.anunciosMsg); }
-      catch (e) { ML.anunciosMsg = `Não foi possível alterar o anúncio: ${e.message}`; toast(ML.anunciosMsg, true); }
-      ML.ocupado = false; render();
+      const falhas = []; let ok = 0;
+      for (const x of alvo) {
+        try { const r = await mlChamar('anuncio_status', { item_id: x.item_id, status: para }); x.status = r.status; ok++; }
+        catch (e) { falhas.push(`${(x.titulo || '').slice(0, 30)}: ${e.message}`); }
+      }
+      ML.anunciosMsg = `${ativar ? 'Ativado' : 'Pausado'}: ${plural(ok, 'anúncio', 'anúncios')}${falhas.length ? `. Falhou: ${falhas.join(' | ')}` : ''}`;
+      toast(ML.anunciosMsg, falhas.length > 0); ML.ocupado = false; render();
     }, { texto: ativar ? 'Ativar' : 'Pausar' });
   },
   mlEnviarUm: el => {
     const a = (ML.anuncios || []).find(x => x.item_id === el.dataset.item); if (!a) return;
     const p = anuncioProduto(a); if (!p) return erro('Este anúncio não está vinculado a um produto.');
-    const cx = cotaAnuncio(a), site = cx.cota;
-    confirmar('Enviar estoque ao ML', `Enviar <b>${site}</b> unidade(s)${cx.n > 1 ? ` (sua parte de ${cx.site}, dividido entre ${cx.n} anúncios)` : ''} de <b>${esc(p.nome)}</b> para o anúncio <b>${esc((a.titulo || '').slice(0, 60))}</b>? Hoje o ML mostra ${a.qtd ?? '—'}.${site === 0 ? ' Com 0, o ML pausa o anúncio.' : ''}`, () => enviarEstoqueML([{ item_id: a.item_id, qtd: site }]), { texto: 'Enviar' });
+    const itens = irmaosAnuncio(a).filter(x => x.status === 'active' || x.status === 'paused').map(x => ({ item_id: x.item_id, qtd: cotaAnuncio(x)?.cota ?? 0, t: x.titulo }));
+    const site = unidadesDisponiveis(p.id).length;
+    confirmar('Enviar estoque ao ML', `<b>${esc(p.nome)}</b>: ${site} unidade(s) no site${itens.length > 1 ? `, dividido entre os ${itens.length} anúncios ligados` : ''}.<br>${itens.map(x => `${esc((x.t || '').slice(0, 44))} → <b>${x.qtd}</b>`).join('<br>')}${itens.some(x => x.qtd === 0) ? '<br><br>Com 0, o ML pausa o anúncio.' : ''}`, () => enviarEstoqueML(itens.map(({ item_id, qtd }) => ({ item_id, qtd }))), { texto: 'Enviar' });
   },
   rentOrdenar: el => { const U = UI.rent, c = el.dataset.col; U.dir = U.ordem === c && U.dir === 'desc' ? 'asc' : 'desc'; U.ordem = c; render(); },
   dreImposto: () => { const n = parseNum(val('dre-imp')); if (Number.isNaN(n) || n < 0 || n > 60) return erro('Confira o percentual.'); DB.config.impostoPct = n || 0; commit(n ? `Imposto estimado: ${fmtIn(n)}%` : 'Imposto estimado removido'); },
