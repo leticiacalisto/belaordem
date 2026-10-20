@@ -2586,7 +2586,7 @@ function modalDevolver(lote) {
 }
 
 /* ---------- Editar lote / unidade ---------- */
-function modalLote(lote) {
+function modalLote(lote, opc = {}) {
   const i = lote.it, P = mapaProdutos(), n = lote.ids.length;
   const vfs = DB.vendasFisicas.slice().sort((a, b) => (b.data || '').localeCompare(a.data || ''));
   const ansP = mapaAnuncios()[i.produto] || [], trava = i.status === 'avenda' && ansP.some(a => a.status === 'active'), alvo = trava ? alvoML(i.produto) : null;
@@ -2642,6 +2642,7 @@ function modalLote(lote) {
         });
       }
       commit('Alterações salvas');
+      if (opc.voltar) opc.voltar();
     },
   });
 }
@@ -3139,6 +3140,7 @@ function modalFisicaNova() {
     },
   });
 }
+let FISICA_G = null;   // itens (agrupados) da venda física aberta: cada linha abre a edição da unidade
 function modalFisica(id) {
   const v = DB.vendasFisicas.find(x => x.id === id);
   if (!v) return;
@@ -3148,6 +3150,7 @@ function modalFisica(id) {
   const status = statusPgto(v.pago, venda);
   const grupos = {};
   itens.forEach(i => { const k = `${i.produto}|${i.venda}|${i.dVenda}`; (grupos[k] = grupos[k] || { it: i, ids: [] }).ids.push(i.id); });
+  FISICA_G = { id, lista: Object.values(grupos) };
   const corpo = `<div class="form-grid">
     ${campo('fd-pessoa', 'Cliente', inputTxt('fd-pessoa', v.pessoa))}
     ${campo('fd-data', 'Data', inputData('fd-data', v.data))}
@@ -3163,7 +3166,7 @@ function modalFisica(id) {
   ${status !== 'Pago' ? `<div class="inline-form"><input id="fd-receber" inputmode="decimal" placeholder="Valor recebido" aria-label="Valor recebido"><button class="btn btn-sm btn-dark" data-action="receberFisica" data-id="${id}">Registrar pagamento</button><button class="btn btn-sm btn-soft" data-action="quitarFisica" data-id="${id}">Quitar tudo</button></div>` : ''}
   <div class="sub-title">Itens vendidos (${itens.length})</div>
   <div class="lines"><table><thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Preço un.</th><th class="num">Custo un.</th><th>Data</th><th></th></tr></thead><tbody>
-  ${Object.values(grupos).map(g => `<tr><td class="prod">${esc(P[g.it.produto]?.nome || '—')}</td><td class="num">${g.ids.length}</td><td class="num">${brl(g.it.venda)}</td><td class="num">${brl(g.it.custo)}</td><td class="muted">${fdata(g.it.dVenda)}</td><td><button class="btn btn-sm btn-soft" data-action="devolverFisica" data-id="${id}" data-uid="${g.ids[0]}">Devolver 1</button></td></tr>`).join('') || vazioLinha(6, 'Nenhum item vinculado.')}
+  ${Object.values(grupos).map((g, gi) => `<tr class="clic" data-action="editarItemFisica" data-vid="${id}" data-g="${gi}" title="Clique para editar o item"><td class="prod">${esc(P[g.it.produto]?.nome || '—')}</td><td class="num">${g.ids.length}</td><td class="num">${brl(g.it.venda)}</td><td class="num">${brl(g.it.custo)}</td><td class="muted">${fdata(g.it.dVenda)}</td><td><button class="btn btn-sm btn-soft" data-action="devolverFisica" data-id="${id}" data-uid="${g.ids[0]}">Devolver 1</button></td></tr>`).join('') || vazioLinha(6, 'Nenhum item vinculado.')}
   </tbody></table></div>
   <div class="sub-title">Adicionar itens</div>
   <div class="lines"><table><thead><tr><th>Produto</th><th>Qtd</th><th>Preço un.</th><th></th></tr></thead><tbody id="fd-linhas">${linhaFisica()}</tbody></table></div>
@@ -3365,6 +3368,10 @@ const ACOES = {
     if (!x || Number.isNaN(x)) return erro('Informe o valor recebido.');
     v.pago = Math.round(((v.pago || 0) + x) * 100) / 100;
     salvar(); render(); modalFisica(v.id); toast(`Pagamento de ${brl(x)} registrado`);
+  },
+  editarItemFisica: el => {
+    const g = FISICA_G?.id === el.dataset.vid ? FISICA_G.lista[+el.dataset.g] : null; if (!g) return;
+    modalLote({ it: g.it, ids: g.ids }, { voltar: () => modalFisica(el.dataset.vid) });
   },
   devolverFisica: el => {
     const u = DB.estoque.find(i => i.id === el.dataset.uid);
