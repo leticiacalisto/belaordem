@@ -1466,17 +1466,19 @@ function modalPagarNF(chave) {
 }
 
 /* ---------- Caixa real: o extrato da conta do Mercado Pago (tudo passa por ela: vendas do ML, Pix de clientes, compras e taxas) ---------- */
-const GRUPOS_CAIXA = [['ml', 'Mercado Livre (líquido)'], ['cli', 'Pix de clientes'], ['aporte', 'Aportes (líq.)'], ['outras', 'Outras entradas'], ['nf', 'Compras com NF'], ['div', 'Compras sem NF'], ['imp', 'Impostos e contador'], ['etq', 'Etiquetas ML'], ['pes', 'Pessoais e outros'], ['ret', 'Retiradas p/ conta própria']];
+const GRUPOS_CAIXA = [['ml', 'Mercado Livre (líquido)'], ['cli', 'Pix de clientes'], ['aporte', 'Aportes (líq.)'], ['outras', 'Outras entradas'], ['nf', 'Compras com NF'], ['div', 'Compras sem NF'], ['imp', 'Impostos e contador'], ['etq', 'Etiquetas ML'], ['pes', 'Pessoais e outros'], ['ret', 'Caixinha (guardar e retirar)']];
 const GRUPO_DE = { ml: 'ml', ml_pix: 'ml', ml_cancel: 'ml', ml_deb: 'ml', ml_reemb: 'ml', ml_cred: 'ml', pix_cli: 'cli', fis: 'cli', fis_sug: 'cli', aporte: 'aporte', aporte_dev: 'aporte', out_pos: 'outras', nf: 'nf', div: 'div', imp: 'imp', cont: 'imp', etq: 'etq', pes: 'pes', out_neg: 'pes', ret: 'ret' };
-const NOME_CLASSE = { ml: 'Liberação de venda ML', ml_pix: 'Venda ML paga com Pix', ml_cancel: 'Liberação cancelada', ml_deb: 'Débito ML (devolução/reclamação)', ml_reemb: 'Reembolso', ml_cred: 'Crédito de tarifa', pix_cli: 'Pix de cliente (sem venda)', fis: 'Venda física', fis_sug: 'Venda física (sugerida)', aporte: 'Aporte', aporte_dev: 'Devolução de aporte', out_pos: 'Outra entrada', nf: 'Compra com NF', div: 'Compra sem NF', imp: 'Imposto', cont: 'Contador', etq: 'Impressão de etiquetas ML', pes: 'Pessoal/outros', out_neg: 'Outra saída', ret: 'Retirada p/ conta' };
+const NOME_CLASSE = { ml: 'Liberação de venda ML', ml_pix: 'Venda ML paga com Pix', ml_cancel: 'Liberação cancelada', ml_deb: 'Débito ML (devolução/reclamação)', ml_reemb: 'Reembolso', ml_cred: 'Crédito de tarifa', pix_cli: 'Pix de cliente (sem venda)', fis: 'Venda física', fis_sug: 'Venda física (sugerida)', aporte: 'Aporte', aporte_dev: 'Devolução de aporte', out_pos: 'Outra entrada', nf: 'Compra com NF', div: 'Compra sem NF', imp: 'Imposto', cont: 'Contador', etq: 'Impressão de etiquetas ML', pes: 'Pessoal/outros', out_neg: 'Outra saída', ret: 'Caixinha (guardar/retirar)' };
 function caixaPorMes() {
   const e = DB.extrato; if (!e?.movs?.length) return null;
   const m = {};
   for (const x of e.movs) {
-    const k = x.d.slice(0, 7), l = (m[k] = m[k] || { ent: 0, sai: 0, liq: 0, g: {}, n: 0 }), g = GRUPO_DE[x.c] || 'outras';
-    l.n++; if (x.v > 0) l.ent += x.v; else l.sai += x.v; l.liq += x.v; l.g[g] = (l.g[g] || 0) + x.v;
+    const k = x.d.slice(0, 7), l = (m[k] = m[k] || { ent: 0, sai: 0, liq: 0, cx: 0, g: {}, n: 0 }), g = GRUPO_DE[x.c] || 'outras';
+    l.n++; l.g[g] = (l.g[g] || 0) + x.v;
+    if (x.c === 'ret') { l.cx -= x.v; continue; }   // caixinha: o dinheiro só muda de lugar, continua sendo caixa
+    if (x.v > 0) l.ent += x.v; else l.sai += x.v; l.liq += x.v;
   }
-  let ac = 0; for (const k of Object.keys(m).sort()) { ac += m[k].liq; m[k].saldo = ac; }
+  let ac = 0, cx = 0; for (const k of Object.keys(m).sort()) { ac += m[k].liq; cx += m[k].cx; m[k].saldo = ac; m[k].guardado = cx; m[k].conta = ac - cx; }
   return m;
 }
 /* pagamentos das notas de compra (do extrato ou lançados à mão) */
@@ -1497,7 +1499,7 @@ function chipPagCompra(g) {
 function fluxoCaixa() {
   const e = DB.extrato, m = caixaPorMes();
   if (!m) return '<div class="info">Ainda não há extrato do Mercado Pago importado. Importe o backup com o extrato para ver o caixa real.</div>';
-  const keys = Object.keys(m).sort(), ult = keys[keys.length - 1], saldo = m[ult].saldo, confere = Math.abs(saldo - e.saldoFinal) < 0.02;
+  const keys = Object.keys(m).sort(), ult = keys[keys.length - 1], saldo = m[ult].saldo, conta = m[ult].conta, guardado = m[ult].guardado, confere = Math.abs(conta - e.saldoFinal) < 0.02;
   const comp = comprasAgrupadas(), abertas = comp.filter(g => g.nf && !['Pago'].includes(statusPagCompra(g).st) && !(e.ate && g.dFim > e.ate)), aPagar = sum(abertas, g => statusPagCompra(g).falta ?? g.custo);
   const sv = statsVF(), aReceber = sum(DB.vendasFisicas.filter(v => tipoVF(v) === 'venda'), v => Math.max(0, (sv[v.id]?.venda || 0) - (v.pago || 0)));
   // a liberar do ML: pedidos pagos cujo dinheiro ainda não apareceu no extrato
@@ -1509,15 +1511,15 @@ function fluxoCaixa() {
   keys.forEach(k => { tot.ent += m[k].ent; tot.sai += m[k].sai; tot.liq += m[k].liq; for (const [g, v] of Object.entries(m[k].g)) tot.g[g] = (tot.g[g] || 0) + v; });
   const cel = v => v == null || Math.abs(v) < 0.005 ? '<td class="num faint">—</td>' : `<td class="num ${v < 0 ? 'neg' : ''}">${brl(v)}</td>`;
   return `<div class="card block" style="margin-bottom:18px"><div class="hoje-grid">
-      ${kpiFin(`Saldo no Mercado Pago`, brl(saldo), `<div class="kpi-s">em ${fdata(e.ate)} · ${confere ? '<span style="color:#0f766e">confere com o extrato</span>' : '<span class="neg">não confere com o extrato</span>'}</div>`)}
+      ${kpiFin(`Caixa total (Mercado Pago)`, brl(saldo), `<div class="kpi-s">conta ${brl(conta)} + caixinha ${brl(guardado)} · em ${fdata(e.ate)} · ${confere ? '<span style="color:#0f766e">confere com o extrato</span>' : '<span class="neg">não confere com o extrato</span>'}</div>`)}
       ${kpiFin('A liberar do ML', aLiberar == null ? '—' : brl(aLiberar), `<div class="kpi-s">vendas pagas ainda sem liberação (estimado)</div>`)}
       ${kpiFin('A pagar a fornecedores', brl(aPagar), `<div class="kpi-s">${plural(abertas.length, 'nota em aberto', 'notas em aberto')} · <button class="btn-link" data-action="concIr" data-tab="forn">ver</button></div>`)}
       ${kpiFin('A receber de clientes', brl(aReceber), `<div class="kpi-s">vendas físicas pendentes · <button class="btn-link" data-action="go" data-view="fisicas">ver</button></div>`)}
     </div></div>
-    <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Saldo do mês</th><th class="num">Saldo final</th>${GRUPOS_CAIXA.map(([k, n]) => `<th class="num">${n}</th>`).join('')}</tr></thead><tbody>
-    ${keys.map(k => `<tr class="clic" data-action="caixaMes" data-mes="${k}" title="Ver os ${m[k].n} movimentos"><td>${nomeMes(k)}</td><td class="num">${brl(m[k].ent)}</td><td class="num neg">${brl(m[k].sai)}</td><td class="num ${m[k].liq < 0 ? 'neg' : ''}"><b style="font-weight:500">${brl(m[k].liq)}</b></td><td class="num">${brl(m[k].saldo)}</td>${GRUPOS_CAIXA.map(([g]) => cel(m[k].g[g])).join('')}</tr>`).join('')}
-    <tr class="total"><td>Total</td><td class="num">${brl(tot.ent)}</td><td class="num neg">${brl(tot.sai)}</td><td class="num">${brl(tot.liq)}</td><td class="num">${brl(saldo)}</td>${GRUPOS_CAIXA.map(([g]) => cel(tot.g[g])).join('')}</tr></tbody></table></div>
-    <p class="note">Vem do extrato da conta do Mercado Pago (${fdata(e.de)} a ${fdata(e.ate)}), que é por onde passam as vendas do ML, os Pix dos clientes, as compras e as taxas. Clique num mês para ver os movimentos. O ML entra líquido (já sem tarifa e frete). Retirada é dinheiro que você levou para outra conta, não é despesa. Aporte é dinheiro seu ou da família que entrou. Para fechar outubro em diante, importe o extrato novo.</p>`;
+    <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Resultado do mês</th><th class="num">Na caixinha</th><th class="num">Caixa total</th>${GRUPOS_CAIXA.filter(([g]) => g !== 'ret').map(([k, n]) => `<th class="num">${n}</th>`).join('')}</tr></thead><tbody>
+    ${keys.map(k => `<tr class="clic" data-action="caixaMes" data-mes="${k}" title="Ver os ${m[k].n} movimentos"><td>${nomeMes(k)}</td><td class="num">${brl(m[k].ent)}</td><td class="num neg">${brl(m[k].sai)}</td><td class="num ${m[k].liq < 0 ? 'neg' : ''}"><b style="font-weight:500">${brl(m[k].liq)}</b></td><td class="num">${brl(m[k].guardado)}</td><td class="num">${brl(m[k].saldo)}</td>${GRUPOS_CAIXA.filter(([g]) => g !== 'ret').map(([g]) => cel(m[k].g[g])).join('')}</tr>`).join('')}
+    <tr class="total"><td>Total</td><td class="num">${brl(tot.ent)}</td><td class="num neg">${brl(tot.sai)}</td><td class="num">${brl(tot.liq)}</td><td class="num">${brl(guardado)}</td><td class="num">${brl(saldo)}</td>${GRUPOS_CAIXA.filter(([g]) => g !== 'ret').map(([g]) => cel(tot.g[g])).join('')}</tr></tbody></table></div>
+    <p class="note">Vem do extrato da conta do Mercado Pago (${fdata(e.de)} a ${fdata(e.ate)}), que é por onde passam as vendas do ML, os Pix dos clientes, as compras e as taxas. Clique num mês para ver os movimentos. O ML entra líquido (já sem tarifa e frete). Guardar e retirar da caixinha só muda o dinheiro de lugar dentro da mesma conta: não entra em Entrou/Saiu, e o valor guardado continua somado no Caixa total (sem contar os rendimentos, que o extrato não mostra). Aporte é dinheiro seu ou da família que entrou. Para fechar outubro em diante, importe o extrato novo.</p>`;
 }
 function modalCaixaMes(k) {
   const e = DB.extrato; if (!e) return;
