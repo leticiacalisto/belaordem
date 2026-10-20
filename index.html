@@ -1362,6 +1362,7 @@ function vendasSemPagamento() {
     .filter(r => r.falta > 0.5 || r.semData).sort((a, b) => (a.v.data || '').localeCompare(b.v.data || ''));
 }
 function mlSemVinculo() {
+  garantirPedidosML();
   const e = DB.extrato, ids = new Set(e.movs.filter(x => (x.c === 'ml' || x.c === 'ml_pix') && x.k).map(x => String(x.k)));
   const limite = addDias(e.ate, -20);
   const semDinheiro = (ML.pedidos || []).filter(o => pedidoValido(o) && o.date_created.slice(0, 10) >= e.de && o.date_created.slice(0, 10) <= limite && !ids.has(String(o.id)));
@@ -1374,6 +1375,7 @@ function vConciliacao() {
   const mesesPix = [...new Set(e.movs.filter(x => x.c === 'pix_cli' && !x.ign).map(x => x.d.slice(0, 7)))].sort();
   const pix = e.movs.map((x, i) => [x, i]).filter(([x]) => x.c === 'pix_cli' && !x.ign);
   const soltasTodas = gruposSoltas(), mesesS = [...new Set(soltasTodas.map(g => g.mes))].sort();
+  garantirPedidosML();
   const ml = ML.pedidos ? mlSemVinculo() : null;
   const forn = comprasAgrupadas().filter(g => g.nf && statusPagCompra(g).st !== 'Pago' && !(e.ate && g.dFim > e.ate));
   const semPag = vendasSemPagamento();
@@ -1505,7 +1507,14 @@ function chipPagCompra(g) {
   return (ate && g.dFim > ate) ? '<span class="chip">Depois do extrato</span>' : '<span class="chip c-red">Sem pagamento</span>';
 }
 /* vendas do ML pagas cujo dinheiro ainda nao apareceu no extrato (liquido estimado = pago - tarifa - frete) */
+/* carrega os pedidos do ML em segundo plano quando uma tela precisa deles (Caixa, Conciliação) */
+function garantirPedidosML() {
+  if (ML.pedidos || ML.hojeCarregando || !sessao()) return;
+  ML.hojeCarregando = true;
+  mlChamar('status').then(async st => { ML.status = st; if (st.connected) ML.pedidos = await mlListarTudo(); }).catch(() => {}).finally(() => { ML.hojeCarregando = false; if (['conciliacao', 'fluxo'].includes(UI.view)) render(); });
+}
 function mlNaoLiberado() {
+  garantirPedidosML();
   const e = DB.extrato; if (!e || !ML.pedidos) return null;
   const ids = new Set(e.movs.filter(x => (x.c === 'ml' || x.c === 'ml_pix') && x.k).map(x => String(x.k)));
   return ML.pedidos.filter(o => pedidoValido(o) && o.date_created.slice(0, 10) > addDias(e.ate, -45) && o.date_created.slice(0, 10) <= e.ate && !ids.has(String(o.id)))
