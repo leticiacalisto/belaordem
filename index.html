@@ -1405,15 +1405,23 @@ function vConciliacao() {
       <div class="sub-title">Pedidos sem dinheiro no extrato (${ml.semDinheiro.length})</div>
       <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Pedido</th><th>Itens</th><th class="num">Pago</th></tr></thead><tbody>
       ${ml.semDinheiro.slice(0, 80).map(o => `<tr><td>${fdata(o.date_created.slice(0, 10))}</td><td class="muted">${esc(String(o.id))}</td><td>${esc((o.items || []).map(i => `${i.qty}× ${i.title}`).join(', '))}</td><td class="num">${brl(o.paid_amount)}</td></tr>`).join('') || vazioLinha(4, 'Nenhum.')}</tbody></table></div>
-      <div class="sub-title" style="margin-top:18px">Liberações sem pedido (${ml.semPedido.length} · ${brl(sum(ml.semPedido, x => x.v))})</div>
-      <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Operação</th><th class="num">Valor</th></tr></thead><tbody>
-      ${ml.semPedido.slice(0, 80).map(x => `<tr><td>${fdata(x.d)}</td><td class="muted">${esc(x.i)}</td><td class="num">${brl(x.v)}</td></tr>`).join('') || vazioLinha(3, 'Nenhuma.')}</tbody></table></div>`;
+      <div class="sub-title" style="margin-top:18px">Liberações sem pedido (${ml.semPedido.length} · ${brl(sum(ml.semPedido, x => x.v))}) ${ml.semPedido.length ? `<button class="btn btn-sm btn-soft" data-action="concOrigem" style="margin-left:10px" ${CONC_ORIGEM.carregando ? 'disabled' : ''}>${CONC_ORIGEM.carregando ? 'Consultando...' : 'Descobrir a origem no Mercado Pago'}</button>` : ''}</div>
+      <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Operação</th><th>Origem</th><th class="num">Valor</th></tr></thead><tbody>
+      ${ml.semPedido.slice(0, 80).map(x => `<tr><td>${fdata(x.d)}</td><td class="muted">${esc(x.i)}</td><td>${origemPag(CONC_ORIGEM.mapa[x.i])}</td><td class="num">${brl(x.v)}</td></tr>`).join('') || vazioLinha(4, 'Nenhuma.')}</tbody></table></div>`;
   }
   return `<div class="page">${pageHead('Conciliação', `Extrato do Mercado Pago de ${fdata(e.de)} a ${fdata(e.ate)} cruzado com vendas, estoque e notas`)}
     ${tabs('conc.tab', U.tab, [['pix', 'Pix sem venda', pix.length], ['soltas', 'Unidades soltas', nU], ['fis', 'Vendas sem pagamento', semPag.length], ['forn', 'Fornecedores', forn.length], ['ml', 'Mercado Livre', ml ? ml.semDinheiro.length + ml.semPedido.length : null]])}
     ${corpo}</div>`;
 }
 let CONC_G = null;
+const CONC_ORIGEM = { mapa: {}, carregando: false };
+/* resume o que o Mercado Pago diz sobre um pagamento (venda de campanha, link, QR, etc.) */
+function origemPag(p) {
+  if (!p) return '<span class="faint">—</span>';
+  if (p.erro) return `<span class="muted" title="${esc(p.msg || '')}">não achei (erro ${p.erro})</span>`;
+  const partes = [p.descricao, p.pedido ? `pedido ${p.pedido}${p.tipo_pedido ? ' (' + p.tipo_pedido + ')' : ''}` : '', p.origem, p.ref ? 'ref. ' + p.ref : '', p.campanha ? 'campanha ' + p.campanha : '', p.operacao, p.metodo].filter(Boolean);
+  return `<span class="muted">${esc(partes.join(' · ') || p.status || '')}</span>`;
+}
 function modalLancarPix(i) {
   const x = DB.extrato.movs[i]; if (!x) return;
   const grupos = gruposSoltas(); CONC_G = { i, grupos };
@@ -3589,6 +3597,20 @@ const ACOES = {
   caixaMes: el => modalCaixaMes(el.dataset.mes),
   concIr: el => { UI.conc.tab = el.dataset.tab; UI.conc.mes = ''; go('conciliacao'); },
   concLancar: el => modalLancarPix(+el.dataset.i),
+  concOrigem: async () => {
+    const ids = mlSemVinculo().semPedido.map(x => x.i).filter(i => !CONC_ORIGEM.mapa[i] || CONC_ORIGEM.mapa[i].erro);
+    if (!ids.length) return toast('Já consultei todas.');
+    CONC_ORIGEM.carregando = true; render();
+    try {
+      for (let k = 0; k < ids.length; k += 25) {
+        const r = await mlChamar('pagamentos_mp', { ids: ids.slice(k, k + 25) });
+        for (const p of r.pagamentos || []) CONC_ORIGEM.mapa[String(p.id)] = p;
+        render();
+      }
+      toast('Origens consultadas');
+    } catch (e) { erro(e.message || 'Falha ao consultar o Mercado Pago'); }
+    CONC_ORIGEM.carregando = false; render();
+  },
   concIgnorar: el => { const x = DB.extrato.movs[+el.dataset.i]; if (x) { x.ign = 1; commit('Pix marcado como não-venda'); } },
   concPagarNF: el => modalPagarNF(el.dataset.chave),
   abrirFisica: (el, e) => { if (e.target.closest('button') && e.target.closest('button') !== el) return; modalFisica(el.dataset.id); },

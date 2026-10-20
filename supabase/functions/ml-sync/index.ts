@@ -157,6 +157,28 @@ async function cobrancas(key: string, offset: number, paginas: number) {
   return { proximo: off, total, gravados };
 }
 
+// ---- Pagamentos do Mercado Pago (só leitura): de onde veio uma liberação que não liga a nenhum pedido do ML
+async function pagamentosMP(ids: string[]) {
+  const { token } = await getAccess();
+  const out: Record<string, unknown>[] = [];
+  for (const id of ids.filter((x) => /^\d{6,}$/.test(x)).slice(0, 30)) {
+    const r = await fetch(`https://api.mercadopago.com/v1/payments/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+    const j: any = await r.json().catch(() => null);
+    if (!r.ok || !j) { out.push({ id, erro: r.status, msg: j?.message ?? null }); }
+    else {
+      out.push({
+        id, status: j.status, detalhe: j.status_detail, aprovado: j.date_approved, valor: j.transaction_amount,
+        liquido: j.transaction_details?.net_received_amount ?? null, descricao: j.description ?? null,
+        tipo: j.payment_type_id, metodo: j.payment_method_id, operacao: j.operation_type,
+        pedido: j.order?.id ?? null, tipo_pedido: j.order?.type ?? null, ref: j.external_reference ?? null,
+        origem: j.point_of_interaction?.type ?? null, campanha: j.campaign_id ?? null,
+      });
+    }
+    await new Promise((res) => setTimeout(res, 150));
+  }
+  return { pagamentos: out };
+}
+
 // ---- Reclamações / devoluções do ML (só leitura): guarda as respostas cruas em ml_ads_raw (tipo recl_*) para analisarmos
 async function reclamacoesTeste(_pedidos: number[]) {
   const { token } = await getAccess();
@@ -414,6 +436,7 @@ Deno.serve(async (req) => {
       return json({ ads, cobrancas: cob });
     }
     if (action === "ads_teste") return json(await adsTeste());
+    if (action === "pagamentos_mp") return json(await pagamentosMP((body.ids ?? []).map(String)));
     if (action === "reclamacoes_teste") return json(await reclamacoesTeste((body.pedidos ?? []).map(Number)));
     if (action === "fretes") return json(await fretes(Math.min(Number(body.limite) || 60, 100)));
     if (action === "envios") return json(await envios(Math.min(Number(body.limite) || 40, 80)));
