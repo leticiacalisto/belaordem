@@ -667,7 +667,8 @@ const UI = {
   fin: { periodo: hojeISO().slice(0, 7) },
   envios: { tab: 'hoje' },
   repor: { mostrar: false },
-  fluxo: { ano: hojeISO().slice(0, 4), tab: 'mensal', periodo: hojeISO().slice(0, 7) },
+  fluxo: { ano: hojeISO().slice(0, 4), tab: 'caixa', periodo: hojeISO().slice(0, 7), grupo: '' },
+  conc: { tab: 'pix', mes: '', fis: 'sem' },
   rent: { periodo: 'ano:' + hojeISO().slice(0, 4), q: '', ordem: 'lucro', dir: 'desc', soNeg: false },
   despesas: { periodo: hojeISO().slice(0, 7) },
 };
@@ -732,7 +733,7 @@ const vazioLinha = (cols, msg = 'Nenhum item encontrado.') => `<tr><td class="em
 const NAV = [
   { sec: 'Gestão', itens: [['inicio', 'Início', 'home'], ['produtos', 'Produtos', 'box'], ['estoque', 'Estoque', 'layers'], ['compras', 'Compras', 'truck']] },
   { sec: 'Vendas', itens: [['hoje', 'Vendas do dia', 'clock'], ['marketing', 'Marketing e custos ML', 'megaphone'], ['vendas', 'Vendas', 'cart'], ['fisicas', 'Vendas Físicas', 'store'], ['encomendas', 'Encomendas', 'clipboard']] },
-  { sec: 'Financeiro', itens: [['financeiro', 'Resumo', 'pie'], ['dre', 'DRE', 'trend'], ['fluxo', 'Fluxo de caixa', 'wallet'], ['rentabilidade', 'Lucro por produto', 'bars']] },
+  { sec: 'Financeiro', itens: [['financeiro', 'Resumo', 'pie'], ['dre', 'DRE', 'trend'], ['fluxo', 'Fluxo de caixa', 'wallet'], ['rentabilidade', 'Lucro por produto', 'bars'], ['conciliacao', 'Conciliação', 'clipboard']] },
 ];
 function renderNav() {
   const sv = statsVF();
@@ -1064,11 +1065,11 @@ function vCompras() {
       });
       sub = Object.entries(porProd).sort((a, b) => b[1].n - a[1].n).map(([pid, x]) => `<tr class="sub"><td></td><td colspan="2" class="prod"><div class="pn">${esc(P[pid]?.nome || '—')}</div></td><td class="num">${x.n} un.</td><td class="num">${brl(x.custo / x.n)} un.</td><td class="num">${x.av} à venda</td><td colspan="2" class="muted">Validade: ${[...x.val].sort().map(fdata).join(', ') || '—'}</td></tr>`).join('');
     }
-    return `<tr class="clic" data-action="abrirCompra" data-chave="${esc(g.chave)}"><td class="muted">${ic(aberta ? 'chevronDown' : 'chevron', 16)}</td><td>${datas}</td><td>${chip('fornecedor', g.fornecedor)}</td><td>${esc(g.nf || 'Sem NF')}</td><td class="num">${g.itens.length}</td><td class="num">${brl(g.custo)}</td><td class="num">${g.vendidos}/${g.itens.length} vendidos</td><td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="editarCompra" data-chave="${esc(g.chave)}">Editar</button></div></td></tr>${sub}`;
+    return `<tr class="clic" data-action="abrirCompra" data-chave="${esc(g.chave)}"><td class="muted">${ic(aberta ? 'chevronDown' : 'chevron', 16)}</td><td>${datas}</td><td>${chip('fornecedor', g.fornecedor)}</td><td>${esc(g.nf || 'Sem NF')}</td><td class="num">${g.itens.length}</td><td class="num">${brl(g.custo)}</td><td>${chipPagCompra(g)}</td><td class="num">${g.vendidos}/${g.itens.length} vendidos</td><td><div class="row-actions"><button class="btn btn-sm btn-soft" data-action="editarCompra" data-chave="${esc(g.chave)}">Editar</button></div></td></tr>${sub}`;
   }).join('');
   return `<div class="page">${pageHead('Compras', 'Entradas de estoque agrupadas por nota fiscal', `<button class="btn" data-action="escolherXmlCompras">${ic('plus', 18)} Conferir notas (XMLs)</button><input type="file" id="arquivos-nfe-compra" accept=".xml,text/xml,application/xml" multiple hidden><button class="btn btn-dark" data-action="novaCompra">${ic('plus', 18)} Registrar compra</button>`)}
   <div class="toolbar">${campoBusca('comp-q', 'compras.q', U.q, 'Buscar NF, fornecedor ou produto...')}</div>
-  <div class="table-wrap livre"><table><thead><tr><th></th><th>Data da compra</th><th>Fornecedor</th><th>NF</th><th class="num">Unidades</th><th class="num">Custo total</th><th class="num">Andamento</th><th></th></tr></thead><tbody>${rows || vazioLinha(8)}</tbody></table></div>
+  <div class="table-wrap livre"><table><thead><tr><th></th><th>Data da compra</th><th>Fornecedor</th><th>NF</th><th class="num">Unidades</th><th class="num">Custo total</th><th>Pagamento</th><th class="num">Andamento</th><th></th></tr></thead><tbody>${rows || vazioLinha(9)}</tbody></table></div>
   ${botaoMais(lista.length, 'compras.limite', U.limite)}
   <p class="note">A data de compra dos itens migrados do Notion corresponde ao dia do cadastro. Use "Editar" para corrigir a data de uma NF inteira de uma vez.</p></div>`;
 }
@@ -1207,7 +1208,11 @@ function finBase() {
     const x = lin(c.mes), v = +c.valor || 0;
     if (ehMarketing(c)) x.mkt += v; else x.outrasMl += v;
   }
-  for (const v of DB.vendasFisicas) if (tipoVF(v) === 'venda' && v.data) lin(v.data.slice(0, 7)).recebidoFis += v.pago || 0;
+  for (const v of DB.vendasFisicas) {
+    if (tipoVF(v) !== 'venda') continue;
+    if (v.pagamentos?.length) { for (const q of v.pagamentos) if (q.d) lin(q.d.slice(0, 7)).recebidoFis += q.v || 0; }
+    else if (v.data) lin(v.data.slice(0, 7)).recebidoFis += v.pago || 0;
+  }
   for (const r of DB.receitas || []) { if (!r.data) continue; const x = lin(r.data.slice(0, 7)); x.recCaixa += r.valor || 0; if (receitaNoLucro(r)) x.rec += r.valor || 0; }
   return m;
 }
@@ -1334,13 +1339,206 @@ function vDRE() {
   <p class="note">Faturamento e custo entram no mês da venda. Tarifas e fretes são os reais de cada pedido. Do ML entra só o que você paga de fato à parte (os "Pagamentos feitos" da fatura: publicidade, Minha página, devolução e impostos cobrados por fora). Parcelamento, custo do Mercado Pago, frete e cancelamentos são debitados na própria venda e já estão na tarifa e no frete de cada pedido. Consumo próprio e perdas aparecem a custo, depois do resultado operacional, para não distorcer o custo das mercadorias vendidas.</p></div>`;
 }
 
+/* ---------- Conciliação: o que ficou sem vínculo entre extrato, vendas, estoque e notas ---------- */
+function unidadesSoltas() {
+  const VF = mapaVF();
+  return DB.estoque.filter(i => i.status === 'vendido' && !i.mlPedido && (!i.vendaFisica || tipoVF(VF[i.vendaFisica]) === 'ajuste' || /sem pedido/i.test(VF[i.vendaFisica]?.pessoa || '')));
+}
+function gruposSoltas(mes = '') {
+  const VF = mapaVF(), P = mapaProdutos(), m = new Map();
+  for (const u of unidadesSoltas()) {
+    const mc = (u.dCompra || '').slice(0, 7);
+    if (mes && mc !== mes) continue;
+    const orig = u.vendaFisica ? (VF[u.vendaFisica]?.pessoa || 'Venda física') : 'Sem venda';
+    const k = `${u.produto}|${mc}|${orig}`;
+    let g = m.get(k); if (!g) { g = { k, produto: P[u.produto]?.nome || u.produto, mes: mc, orig, ids: [], nfs: new Set(), custo: 0, venda: 0, dVenda: u.dVenda }; m.set(k, g); }
+    g.ids.push(u.id); if (u.nf) g.nfs.add(u.nf); g.custo += u.custo || 0; g.venda += u.venda || 0;
+  }
+  return [...m.values()].sort((a, b) => a.mes.localeCompare(b.mes) || a.produto.localeCompare(b.produto));
+}
+function vendasSemPagamento() {
+  const sv = statsVF();
+  return DB.vendasFisicas.filter(v => tipoVF(v) === 'venda' && sv[v.id]?.itens).map(v => ({ v, venda: sv[v.id].venda, falta: Math.max(0, sv[v.id].venda - (v.pago || 0)), semData: (v.pago || 0) > 0.5 && !v.pagamentos?.length }))
+    .filter(r => r.falta > 0.5 || r.semData).sort((a, b) => (a.v.data || '').localeCompare(b.v.data || ''));
+}
+function mlSemVinculo() {
+  const e = DB.extrato, ids = new Set(e.movs.filter(x => (x.c === 'ml' || x.c === 'ml_pix') && x.k).map(x => String(x.k)));
+  const limite = addDias(e.ate, -20);
+  const semDinheiro = (ML.pedidos || []).filter(o => pedidoValido(o) && o.date_created.slice(0, 10) >= e.de && o.date_created.slice(0, 10) <= limite && !ids.has(String(o.id)));
+  const semPedido = e.movs.filter(x => x.c === 'ml' && !x.k);
+  return { semDinheiro, semPedido };
+}
+function vConciliacao() {
+  const e = DB.extrato, U = UI.conc;
+  if (!e) return `<div class="page">${pageHead('Conciliação', 'O que ficou sem vínculo entre extrato, vendas, estoque e notas')}<div class="info">Importe o backup com o extrato do Mercado Pago para usar a conciliação.</div></div>`;
+  const mesesPix = [...new Set(e.movs.filter(x => x.c === 'pix_cli' && !x.ign).map(x => x.d.slice(0, 7)))].sort();
+  const pix = e.movs.map((x, i) => [x, i]).filter(([x]) => x.c === 'pix_cli' && !x.ign);
+  const soltasTodas = gruposSoltas(), mesesS = [...new Set(soltasTodas.map(g => g.mes))].sort();
+  const ml = ML.pedidos ? mlSemVinculo() : null;
+  const forn = comprasAgrupadas().filter(g => g.nf && statusPagCompra(g).st !== 'Pago' && !(e.ate && g.dFim > e.ate));
+  const semPag = vendasSemPagamento();
+  const nU = sum(soltasTodas, g => g.ids.length);
+  const filtroMes = lista => select('conc.mes', U.mes, [['', 'Todos os meses'], ...lista.map(k => [k, nomeMes(k)])], 'Mês');
+  let corpo = '';
+  if (U.tab === 'pix') {
+    const L = pix.filter(([x]) => !U.mes || x.d.startsWith(U.mes));
+    corpo = `<p class="note" style="margin-top:0">Dinheiro que entrou por Pix de pessoas e não bate com nenhuma venda registrada. Se foi uma venda, clique em <b>Lançar venda</b> e escolha as unidades soltas (vendidas sem pedido) que ela levou. Se não foi venda, clique em <b>Não é venda</b>.</p>
+      <div class="toolbar">${filtroMes(mesesPix)}<span class="hint">${plural(L.length, 'Pix', 'Pix')} · ${brl(sum(L, ([x]) => x.v))}</span></div>
+      <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Quem pagou</th><th class="num">Valor</th><th></th></tr></thead><tbody>
+      ${L.map(([x, i]) => `<tr><td>${fdata(x.d)}</td><td>${esc(x.t || '')}</td><td class="num">${brl(x.v)}</td><td class="acoes"><button class="btn btn-sm btn-soft" data-action="concLancar" data-i="${i}">Lançar venda</button> <button class="btn btn-sm btn-ghost" data-action="concIgnorar" data-i="${i}">Não é venda</button></td></tr>`).join('') || vazioLinha(4, 'Nenhum Pix pendente.')}</tbody></table></div>`;
+  } else if (U.tab === 'soltas') {
+    const L = gruposSoltas(U.mes);
+    corpo = `<p class="note" style="margin-top:0">Unidades que saíram do estoque sem pedido do ML e sem venda física de verdade (ajuste de estoque, contagem, sem pedido). O mês de compra ajuda a lembrar para quem foram. Quando lembrar, lance a venda pela aba <b>Pix sem venda</b> ou em Vendas Físicas.</p>
+      <div class="toolbar">${filtroMes(mesesS)}<span class="hint">${plural(sum(L, g => g.ids.length), 'unidade', 'unidades')} · custo ${brl(sum(L, g => g.custo))}</span></div>
+      <div class="table-wrap livre"><table><thead><tr><th>Produto</th><th>Comprado em</th><th>NF</th><th class="num">Qtd</th><th class="num">Custo</th><th>Está como</th></tr></thead><tbody>
+      ${L.map(g => `<tr><td>${esc(g.produto)}</td><td>${nomeMes(g.mes) || '—'}</td><td class="muted">${esc([...g.nfs].join(', ') || '—')}</td><td class="num">${g.ids.length}</td><td class="num">${brl(g.custo)}</td><td class="muted">${esc(g.orig)}</td></tr>`).join('') || vazioLinha(6, 'Nada solto.')}</tbody></table></div>`;
+  } else if (U.tab === 'fis') {
+    corpo = `<p class="note" style="margin-top:0">Vendas físicas que ainda não têm pagamento com data localizado no extrato (ou com valor pendente). Clique para registrar o pagamento com a data.</p>
+      <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Cliente</th><th class="num">Venda</th><th class="num">Pago</th><th>Situação</th></tr></thead><tbody>
+      ${semPag.map(r => `<tr class="clic" data-action="abrirFisica" data-id="${r.v.id}"><td>${fdata(r.v.data)}</td><td>${esc(r.v.pessoa)}</td><td class="num">${brl(r.venda)}</td><td class="num">${brl(r.v.pago)}</td><td>${r.falta > 0.5 ? `<span class="chip c-red">Falta ${brl(r.falta)}</span>` : '<span class="chip c-orange">Pago, sem data</span>'}</td></tr>`).join('') || vazioLinha(5, 'Tudo conciliado.')}</tbody></table></div>`;
+  } else if (U.tab === 'forn') {
+    corpo = `<p class="note" style="margin-top:0">Notas fiscais sem pagamento (ou parcial) no extrato. Se pagou por outra conta ou em dinheiro, clique em <b>Marcar paga</b>. Notas depois de ${fdata(e.ate)} não entram, o extrato ainda não chegou lá.</p>
+      <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Fornecedor</th><th>NF</th><th class="num">Valor</th><th>Situação</th><th></th></tr></thead><tbody>
+      ${forn.map(g => `<tr><td>${fdata(g.dFim)}</td><td>${esc(g.fornecedor || '')}</td><td>${esc(g.nf)}</td><td class="num">${brl(g.custo)}</td><td>${chipPagCompra(g)}</td><td class="acoes"><button class="btn btn-sm btn-soft" data-action="concPagarNF" data-chave="${esc(g.chave)}">Marcar paga</button></td></tr>`).join('') || vazioLinha(6, 'Todas as notas têm pagamento.')}</tbody></table></div>`;
+  } else {
+    corpo = !ml ? '<p class="empty-note">Carregando os pedidos do Mercado Livre...</p>' : `<p class="note" style="margin-top:0">Pedidos do ML pagos há mais de 20 dias cujo dinheiro não apareceu no extrato, e liberações que não ligam a nenhum pedido.</p>
+      <div class="sub-title">Pedidos sem dinheiro no extrato (${ml.semDinheiro.length})</div>
+      <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Pedido</th><th>Itens</th><th class="num">Pago</th></tr></thead><tbody>
+      ${ml.semDinheiro.slice(0, 80).map(o => `<tr><td>${fdata(o.date_created.slice(0, 10))}</td><td class="muted">${esc(String(o.id))}</td><td>${esc((o.items || []).map(i => `${i.qty}× ${i.title}`).join(', '))}</td><td class="num">${brl(o.paid_amount)}</td></tr>`).join('') || vazioLinha(4, 'Nenhum.')}</tbody></table></div>
+      <div class="sub-title" style="margin-top:18px">Liberações sem pedido (${ml.semPedido.length} · ${brl(sum(ml.semPedido, x => x.v))})</div>
+      <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Operação</th><th class="num">Valor</th></tr></thead><tbody>
+      ${ml.semPedido.slice(0, 80).map(x => `<tr><td>${fdata(x.d)}</td><td class="muted">${esc(x.i)}</td><td class="num">${brl(x.v)}</td></tr>`).join('') || vazioLinha(3, 'Nenhuma.')}</tbody></table></div>`;
+  }
+  return `<div class="page">${pageHead('Conciliação', `Extrato do Mercado Pago de ${fdata(e.de)} a ${fdata(e.ate)} cruzado com vendas, estoque e notas`)}
+    ${tabs('conc.tab', U.tab, [['pix', 'Pix sem venda', pix.length], ['soltas', 'Unidades soltas', nU], ['fis', 'Vendas sem pagamento', semPag.length], ['forn', 'Fornecedores', forn.length], ['ml', 'Mercado Livre', ml ? ml.semDinheiro.length + ml.semPedido.length : null]])}
+    ${corpo}</div>`;
+}
+let CONC_G = null;
+function modalLancarPix(i) {
+  const x = DB.extrato.movs[i]; if (!x) return;
+  const grupos = gruposSoltas(); CONC_G = { i, grupos };
+  const vendas = [...DB.vendasFisicas].filter(v => tipoVF(v) === 'venda').sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+  const nome = String(x.t || '').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+  abrirModal({
+    titulo: `Lançar venda · ${brl(x.v)} em ${fdata(x.d)}`, largura: 800, rodape: rodapePadrao('Lançar venda'),
+    corpo: `<div class="form-grid">
+      ${campo('cl-pessoa', 'Cliente', inputTxt('cl-pessoa', nome))}
+      ${campo('cl-data', 'Data da venda', inputData('cl-data', x.d))}
+      ${campo('cl-existente', 'Ou somar a uma venda existente', `<select id="cl-existente"><option value="">Nova venda</option>${vendas.map(v => `<option value="${v.id}">${esc(v.pessoa)} · ${fdata(v.data)}</option>`).join('')}</select>`)}
+    </div>
+    <div class="sub-title">Unidades soltas que ela levou (opcional)</div>
+    <div class="table-wrap" style="max-height:44vh;overflow:auto"><table><thead><tr><th>Produto</th><th>Comprado em</th><th class="num">Disp.</th><th class="num">Qtd</th><th class="num">Preço un.</th></tr></thead><tbody>
+    ${grupos.map((g, n) => `<tr><td>${esc(g.produto)}</td><td>${nomeMes(g.mes) || '—'}</td><td class="num">${g.ids.length}</td><td class="num"><input class="cl-q" data-n="${n}" type="number" min="0" max="${g.ids.length}" value="0" style="width:64px"></td><td class="num"><input class="cl-p" data-n="${n}" inputmode="decimal" placeholder="${fmtIn(g.venda / g.ids.length)}" style="width:90px"></td></tr>`).join('') || vazioLinha(5, 'Não há unidades soltas.')}</tbody></table></div>
+    <p class="hint">O Pix de ${brl(x.v)} fica registrado como pagamento dessa venda, com a data ${fdata(x.d)}. As unidades escolhidas saem de "ajuste" e passam a ser da venda.</p>`,
+    onConfirm: () => {
+      const pessoa = val('cl-pessoa'), data = val('cl-data') || x.d, ex = val('cl-existente');
+      let v = ex ? DB.vendasFisicas.find(y => y.id === ex) : null;
+      if (!v) { if (!pessoa) return erro('Informe o cliente.'); v = { id: uid(), pessoa, pago: 0, data }; DB.vendasFisicas.push(v); }
+      const usadas = [];
+      for (const q of document.querySelectorAll('.cl-q')) {
+        const n = +q.dataset.n, qtd = Math.max(0, Math.floor(+q.value || 0)), g = CONC_G.grupos[n];
+        if (!qtd) continue;
+        if (qtd > g.ids.length) return erro('Quantidade maior que a disponível.');
+        const pv = parseNum(document.querySelector(`.cl-p[data-n="${n}"]`).value);
+        const us = g.ids.slice(0, qtd).map(id => DB.estoque.find(u => u.id === id)).filter(Boolean);
+        venderUnidades(us, { venda: Number.isNaN(pv) || pv == null ? null : pv, data, vendaFisica: v.id });
+        usadas.push(...us);
+      }
+      v.pago = Math.round(((v.pago || 0) + x.v) * 100) / 100;
+      v.pagamentos = [...(v.pagamentos || []), { d: x.d, v: x.v, m: x.i || 'Pix' }];
+      x.c = 'fis'; x.k = v.id;
+      commit(`Venda lançada${usadas.length ? ` com ${plural(usadas.length, 'unidade', 'unidades')}` : ''}`);
+    },
+  });
+}
+function modalPagarNF(chave) {
+  const g = comprasAgrupadas().find(y => y.chave === chave); if (!g) return;
+  const r = statusPagCompra(g);
+  abrirModal({
+    titulo: `Marcar paga · NF ${g.nf}`, largura: 460, rodape: rodapePadrao('Marcar paga'),
+    corpo: `<div class="form-grid">${campo('pn-data', 'Data do pagamento', inputData('pn-data', g.dFim || hojeISO()))}${campo('pn-valor', 'Valor pago', inputNum('pn-valor', r.falta ?? g.custo))}${campo('pn-forma', 'Como pagou', '<input id="pn-forma" value="fora do MP">')}</div>`,
+    onConfirm: () => {
+      const vv = parseNum(val('pn-valor')); if (Number.isNaN(vv) || vv <= 0) return erro('Confira o valor.');
+      DB.pagamentosCompra = [...(DB.pagamentosCompra || []), { nf: String(g.nf), d: val('pn-data') || hojeISO(), v: vv, m: val('pn-forma') || 'fora do MP', a: 0 }];
+      commit('Pagamento registrado');
+    },
+  });
+}
+
+/* ---------- Caixa real: o extrato da conta do Mercado Pago (tudo passa por ela: vendas do ML, Pix de clientes, compras e taxas) ---------- */
+const GRUPOS_CAIXA = [['ml', 'Mercado Livre (líquido)'], ['cli', 'Pix de clientes'], ['aporte', 'Aportes (líq.)'], ['outras', 'Outras entradas'], ['nf', 'Compras com NF'], ['div', 'Compras sem NF'], ['imp', 'Impostos e contador'], ['pes', 'Pessoais e outros'], ['ret', 'Retiradas p/ conta própria']];
+const GRUPO_DE = { ml: 'ml', ml_pix: 'ml', ml_cancel: 'ml', ml_deb: 'ml', ml_reemb: 'ml', ml_cred: 'ml', pix_cli: 'cli', fis: 'cli', fis_sug: 'cli', aporte: 'aporte', aporte_dev: 'aporte', out_pos: 'outras', nf: 'nf', div: 'div', imp: 'imp', cont: 'imp', pes: 'pes', out_neg: 'pes', ret: 'ret' };
+const NOME_CLASSE = { ml: 'Liberação de venda ML', ml_pix: 'Venda ML paga com Pix', ml_cancel: 'Liberação cancelada', ml_deb: 'Débito ML (devolução/reclamação)', ml_reemb: 'Reembolso', ml_cred: 'Crédito de tarifa', pix_cli: 'Pix de cliente (sem venda)', fis: 'Venda física', fis_sug: 'Venda física (sugerida)', aporte: 'Aporte', aporte_dev: 'Devolução de aporte', out_pos: 'Outra entrada', nf: 'Compra com NF', div: 'Compra sem NF', imp: 'Imposto', cont: 'Contador', pes: 'Pessoal/outros', out_neg: 'Outra saída', ret: 'Retirada p/ conta' };
+function caixaPorMes() {
+  const e = DB.extrato; if (!e?.movs?.length) return null;
+  const m = {};
+  for (const x of e.movs) {
+    const k = x.d.slice(0, 7), l = (m[k] = m[k] || { ent: 0, sai: 0, liq: 0, g: {}, n: 0 }), g = GRUPO_DE[x.c] || 'outras';
+    l.n++; if (x.v > 0) l.ent += x.v; else l.sai += x.v; l.liq += x.v; l.g[g] = (l.g[g] || 0) + x.v;
+  }
+  let ac = 0; for (const k of Object.keys(m).sort()) { ac += m[k].liq; m[k].saldo = ac; }
+  return m;
+}
+/* pagamentos das notas de compra (do extrato ou lançados à mão) */
+function pagamentosDaCompra(g) { const nfs = new Set(String(g.nf || '').split(/[|,\s]+/).filter(Boolean)); return nfs.size ? (DB.pagamentosCompra || []).filter(q => nfs.has(String(q.nf))) : []; }
+function statusPagCompra(g) {
+  if (!g.nf) return { st: 'Sem NF', pago: 0 };
+  const ps = pagamentosDaCompra(g), pago = sum(ps, q => q.v), ult = ps.map(q => q.d).sort().pop() || null;
+  if (!ps.length) return { st: 'Sem pagamento', pago: 0, falta: g.custo };
+  return pago >= g.custo * 0.985 - 0.5 ? { st: 'Pago', pago, ult, aprox: ps.some(q => q.a) } : { st: 'Parcial', pago, ult, falta: g.custo - pago, aprox: ps.some(q => q.a) };
+}
+function chipPagCompra(g) {
+  const r = statusPagCompra(g), ate = DB.extrato?.ate;
+  if (r.st === 'Sem NF') return '<span class="chip">Sem NF</span>';
+  if (r.st === 'Pago') return `<span class="chip c-green" title="${r.aprox ? 'Pagamento ligado por aproximação' : 'Pagamento ligado pelo valor exato'}">Pago ${fdata(r.ult)}${r.aprox ? ' ~' : ''}</span>`;
+  if (r.st === 'Parcial') return `<span class="chip c-orange" title="Pago ${brl(r.pago)}">Falta ${brl(r.falta)}</span>`;
+  return (ate && g.dFim > ate) ? '<span class="chip">Depois do extrato</span>' : '<span class="chip c-red">Sem pagamento</span>';
+}
+function fluxoCaixa() {
+  const e = DB.extrato, m = caixaPorMes();
+  if (!m) return '<div class="info">Ainda não há extrato do Mercado Pago importado. Importe o backup com o extrato para ver o caixa real.</div>';
+  const keys = Object.keys(m).sort(), ult = keys[keys.length - 1], saldo = m[ult].saldo, confere = Math.abs(saldo - e.saldoFinal) < 0.02;
+  const comp = comprasAgrupadas(), abertas = comp.filter(g => g.nf && !['Pago'].includes(statusPagCompra(g).st) && !(e.ate && g.dFim > e.ate)), aPagar = sum(abertas, g => statusPagCompra(g).falta ?? g.custo);
+  const sv = statsVF(), aReceber = sum(DB.vendasFisicas.filter(v => tipoVF(v) === 'venda'), v => Math.max(0, (sv[v.id]?.venda || 0) - (v.pago || 0)));
+  // a liberar do ML: pedidos pagos cujo dinheiro ainda não apareceu no extrato
+  const ids = new Set(e.movs.filter(x => (x.c === 'ml' || x.c === 'ml_pix') && x.k).map(x => String(x.k)));
+  let aLiberar = null;
+  if (ML.pedidos) aLiberar = sum((ML.pedidos || []).filter(o => pedidoValido(o) && o.date_created.slice(0, 10) > addDias(e.ate, -45) && o.date_created.slice(0, 10) <= e.ate && !ids.has(String(o.id))), o => { const it = o.items?.[0] || {}, q = qtdLiquida(o, it); return Math.max(0, Number(o.paid_amount || 0) - (it.sale_fee || 0) * q - Number(o.frete_vendedor || 0)); });
+  const nomeG = Object.fromEntries(GRUPOS_CAIXA);
+  const tot = { ent: 0, sai: 0, liq: 0, g: {} };
+  keys.forEach(k => { tot.ent += m[k].ent; tot.sai += m[k].sai; tot.liq += m[k].liq; for (const [g, v] of Object.entries(m[k].g)) tot.g[g] = (tot.g[g] || 0) + v; });
+  const cel = v => v == null || Math.abs(v) < 0.005 ? '<td class="num faint">—</td>' : `<td class="num ${v < 0 ? 'neg' : ''}">${brl(v)}</td>`;
+  return `<div class="card block" style="margin-bottom:18px"><div class="hoje-grid">
+      ${kpiFin(`Saldo no Mercado Pago`, brl(saldo), `<div class="kpi-s">em ${fdata(e.ate)} · ${confere ? '<span style="color:#0f766e">confere com o extrato</span>' : '<span class="neg">não confere com o extrato</span>'}</div>`)}
+      ${kpiFin('A liberar do ML', aLiberar == null ? '—' : brl(aLiberar), `<div class="kpi-s">vendas pagas ainda sem liberação (estimado)</div>`)}
+      ${kpiFin('A pagar a fornecedores', brl(aPagar), `<div class="kpi-s">${plural(abertas.length, 'nota em aberto', 'notas em aberto')} · <button class="btn-link" data-action="concIr" data-tab="forn">ver</button></div>`)}
+      ${kpiFin('A receber de clientes', brl(aReceber), `<div class="kpi-s">vendas físicas pendentes · <button class="btn-link" data-action="go" data-view="fisicas">ver</button></div>`)}
+    </div></div>
+    <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Saldo do mês</th><th class="num">Saldo final</th>${GRUPOS_CAIXA.map(([k, n]) => `<th class="num">${n}</th>`).join('')}</tr></thead><tbody>
+    ${keys.map(k => `<tr class="clic" data-action="caixaMes" data-mes="${k}" title="Ver os ${m[k].n} movimentos"><td>${nomeMes(k)}</td><td class="num">${brl(m[k].ent)}</td><td class="num neg">${brl(m[k].sai)}</td><td class="num ${m[k].liq < 0 ? 'neg' : ''}"><b style="font-weight:500">${brl(m[k].liq)}</b></td><td class="num">${brl(m[k].saldo)}</td>${GRUPOS_CAIXA.map(([g]) => cel(m[k].g[g])).join('')}</tr>`).join('')}
+    <tr class="total"><td>Total</td><td class="num">${brl(tot.ent)}</td><td class="num neg">${brl(tot.sai)}</td><td class="num">${brl(tot.liq)}</td><td class="num">${brl(saldo)}</td>${GRUPOS_CAIXA.map(([g]) => cel(tot.g[g])).join('')}</tr></tbody></table></div>
+    <p class="note">Vem do extrato da conta do Mercado Pago (${fdata(e.de)} a ${fdata(e.ate)}), que é por onde passam as vendas do ML, os Pix dos clientes, as compras e as taxas. Clique num mês para ver os movimentos. O ML entra líquido (já sem tarifa e frete). Retirada é dinheiro que você levou para outra conta, não é despesa. Aporte é dinheiro seu ou da família que entrou. Para fechar outubro em diante, importe o extrato novo.</p>`;
+}
+function modalCaixaMes(k) {
+  const e = DB.extrato; if (!e) return;
+  const G = UI.fluxo.grupo, lista = e.movs.filter(x => x.d.startsWith(k) && (!G || (GRUPO_DE[x.c] || 'outras') === G));
+  const opts = [['', 'Todos os grupos'], ...GRUPOS_CAIXA];
+  abrirModal({
+    titulo: `Movimentos de ${nomeMes(k)}`, largura: 860, rodape: '<button class="btn btn-dark" data-action="fecharModal">Fechar</button>',
+    corpo: `<div class="toolbar"><select class="sel" id="cx-grupo" aria-label="Grupo">${opts.map(([v, l]) => `<option value="${v}" ${v === G ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><span class="hint">${plural(lista.length, 'movimento', 'movimentos')} · soma ${brl(sum(lista, x => x.v))}</span></div>
+      <div class="table-wrap" style="max-height:58vh;overflow:auto"><table><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th class="num">Valor</th></tr></thead><tbody>
+      ${lista.map(x => `<tr><td>${fdata(x.d)}</td><td><span class="chip">${esc(NOME_CLASSE[x.c] || x.c)}</span></td><td class="muted">${esc(x.t || '')}</td><td class="num ${x.v < 0 ? 'neg' : ''}">${brl(x.v)}</td></tr>`).join('') || vazioLinha(4, 'Nada neste grupo.')}</tbody></table></div>`,
+  });
+  $('#cx-grupo')?.addEventListener('change', ev => { UI.fluxo.grupo = ev.target.value; modalCaixaMes(k); });
+}
+
 /* ---------- Fluxo de caixa (visão mensal + lançamentos manuais de despesas e receitas) ---------- */
 function vFluxo() {
   mktFin();
   const U = UI.fluxo, m = finBase(), nLanc = DB.despesas.length + (DB.receitas || []).length;
   return `<div class="page">${pageHead('Fluxo de caixa', 'Entradas, saídas e os lançamentos manuais (despesas e receitas) num lugar só', `<button class="btn" data-action="novaReceita">${ic('plus', 18)} Nova receita</button><button class="btn btn-dark" data-action="novaDespesa">${ic('plus', 18)} Nova despesa</button>`)}
-  ${avisoCobr()}${tabs('fluxo.tab', U.tab, [['mensal', 'Visão mensal'], ['lancamentos', 'Lançamentos', nLanc]])}
-  ${U.tab === 'lancamentos' ? fluxoLancamentos(m) : fluxoMensal(m)}</div>`;
+  ${avisoCobr()}${tabs('fluxo.tab', U.tab, [['caixa', 'Caixa (Mercado Pago)'], ['mensal', 'Resultado por mês'], ['lancamentos', 'Lançamentos', nLanc]])}
+  ${U.tab === 'lancamentos' ? fluxoLancamentos(m) : U.tab === 'mensal' ? fluxoMensal(m) : fluxoCaixa()}</div>`;
 }
 function fluxoMensal(m) {
   const U = UI.fluxo;
@@ -3142,6 +3340,11 @@ function modalFisicaNova() {
     },
   });
 }
+/* pagamentos recebidos de uma venda física (data e origem) */
+const pagamentosHTML = v => {
+  const ps = v.pagamentos || [];
+  return ps.length ? `<div class="sub-title">Pagamentos recebidos</div><ul class="mini-list">${ps.map(q => `<li><span>${fdata(q.d)} <span class="muted">· ${/^\d{6,}$/.test(String(q.m || '')) ? 'Pix no Mercado Pago' : esc(q.m || 'registrado')}</span></span><b style="font-weight:500">${brl(q.v)}</b></li>`).join('')}</ul>` : (v.pago > 0 ? '<p class="hint">Sem data de pagamento registrada. Use Registrar pagamento (com a data) ou a Conciliação.</p>' : '');
+};
 let FISICA_G = null;   // itens (agrupados) da venda física aberta: cada linha abre a edição da unidade
 function modalFisica(id) {
   const v = DB.vendasFisicas.find(x => x.id === id);
@@ -3165,7 +3368,8 @@ function modalFisica(id) {
     <div class="stat"><span>Status</span><b>${chip('pgto', status)}</b></div>
     <div class="stat"><span>Lucro</span><b>${brl(venda - custo)}</b></div>
   </div>
-  ${status !== 'Pago' ? `<div class="inline-form"><input id="fd-receber" inputmode="decimal" placeholder="Valor recebido" aria-label="Valor recebido"><button class="btn btn-sm btn-dark" data-action="receberFisica" data-id="${id}">Registrar pagamento</button><button class="btn btn-sm btn-soft" data-action="quitarFisica" data-id="${id}">Quitar tudo</button></div>` : ''}
+  ${status !== 'Pago' ? `<div class="inline-form"><input id="fd-receber" inputmode="decimal" placeholder="Valor recebido" aria-label="Valor recebido"><input id="fd-receber-data" type="date" value="${hojeISO()}" aria-label="Data do pagamento" style="max-width:150px"><button class="btn btn-sm btn-dark" data-action="receberFisica" data-id="${id}">Registrar pagamento</button><button class="btn btn-sm btn-soft" data-action="quitarFisica" data-id="${id}">Quitar tudo</button></div>` : ''}
+  ${pagamentosHTML(v)}
   <div class="sub-title">Itens vendidos (${itens.length})</div>
   <div class="lines"><table><thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Preço un.</th><th class="num">Custo un.</th><th>Data</th><th></th></tr></thead><tbody>
   ${Object.values(grupos).map((g, gi) => `<tr class="clic" data-action="editarItemFisica" data-vid="${id}" data-g="${gi}" title="Clique para editar o item"><td class="prod">${esc(P[g.it.produto]?.nome || '—')}</td><td class="num">${g.ids.length}</td><td class="num">${brl(g.it.venda)}</td><td class="num">${brl(g.it.custo)}</td><td class="muted">${fdata(g.it.dVenda)}</td><td><button class="btn btn-sm btn-soft" data-action="devolverFisica" data-id="${id}" data-uid="${g.ids[0]}">Devolver 1</button></td></tr>`).join('') || vazioLinha(6, 'Nenhum item vinculado.')}
@@ -3260,7 +3464,7 @@ function fecharBusca() { const b = $('#busca-global'); b.value = ''; renderBusca
 /* =========================================================
    Renderização e navegação
    ========================================================= */
-const VIEWS = { marketing: vMarketing, hoje: vHoje, inicio: vInicio, produtos: vProdutos, estoque: vEstoque, compras: vCompras, vendas: vVendas, fisicas: vFisicas, encomendas: vEncomendas, dre: vDRE, financeiro: vFinanceiro, fluxo: vFluxo, rentabilidade: vRentabilidade, despesas: vFluxo, config: vConfig };
+const VIEWS = { marketing: vMarketing, hoje: vHoje, inicio: vInicio, produtos: vProdutos, estoque: vEstoque, compras: vCompras, vendas: vVendas, fisicas: vFisicas, encomendas: vEncomendas, dre: vDRE, financeiro: vFinanceiro, fluxo: vFluxo, rentabilidade: vRentabilidade, conciliacao: vConciliacao, despesas: vFluxo, config: vConfig };
 function render() {
   const a = document.activeElement;
   const id = a && a.id && $('#main').contains(a) ? a.id : null;
@@ -3358,6 +3562,11 @@ const ACOES = {
   editarCompra: el => modalEditarCompra(el.dataset.chave),
   addNaCompra: el => { const g = comprasAgrupadas().find(x => x.chave === el.dataset.chave); if (g) modalCompra({ fornecedor: g.fornecedor || '', nf: g.nf || '', data: g.dFim || '' }); },
   novaFisica: () => modalFisicaNova(),
+  caixaMes: el => modalCaixaMes(el.dataset.mes),
+  concIr: el => { UI.conc.tab = el.dataset.tab; UI.conc.mes = ''; go('conciliacao'); },
+  concLancar: el => modalLancarPix(+el.dataset.i),
+  concIgnorar: el => { const x = DB.extrato.movs[+el.dataset.i]; if (x) { x.ign = 1; commit('Pix marcado como não-venda'); } },
+  concPagarNF: el => modalPagarNF(el.dataset.chave),
   abrirFisica: (el, e) => { if (e.target.closest('button') && e.target.closest('button') !== el) return; modalFisica(el.dataset.id); },
   quitarFisica: el => {
     const v = DB.vendasFisicas.find(x => x.id === el.dataset.id);
@@ -3369,6 +3578,7 @@ const ACOES = {
     const x = parseNum(val('fd-receber'));
     if (!x || Number.isNaN(x)) return erro('Informe o valor recebido.');
     v.pago = Math.round(((v.pago || 0) + x) * 100) / 100;
+    v.pagamentos = [...(v.pagamentos || []), { d: val('fd-receber-data') || hojeISO(), v: x, m: 'registrado à mão' }];
     salvar(); render(); modalFisica(v.id); toast(`Pagamento de ${brl(x)} registrado`);
   },
   editarItemFisica: el => {
