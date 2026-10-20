@@ -1366,8 +1366,10 @@ function mlSemVinculo() {
   const e = DB.extrato, ids = new Set(e.movs.filter(x => (x.c === 'ml' || x.c === 'ml_pix') && x.k).map(x => String(x.k)));
   const limite = addDias(e.ate, -20);
   const semDinheiro = (ML.pedidos || []).filter(o => pedidoValido(o) && o.date_created.slice(0, 10) >= e.de && o.date_created.slice(0, 10) <= limite && !ids.has(String(o.id)));
-  const semPedido = e.movs.filter(x => x.c === 'ml' && !x.k);
-  return { semDinheiro, semPedido };
+  const porId = {}; for (const x of e.movs) if (x.i) porId[x.i] = (porId[x.i] || 0) + x.v;
+  const todas = e.movs.filter(x => x.c === 'ml' && !x.k);
+  const semPedido = todas.filter(x => Math.abs(porId[x.i]) >= 0.01), anuladas = todas.length - semPedido.length;   // liberação cancelada/debitada depois, no mesmo ID, não conta
+  return { semDinheiro, semPedido, anuladas };
 }
 function vConciliacao() {
   const e = DB.extrato, U = UI.conc;
@@ -1407,7 +1409,7 @@ function vConciliacao() {
       <div class="sub-title">Pedidos sem dinheiro no extrato (${ml.semDinheiro.length})</div>
       <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Pedido</th><th>Itens</th><th class="num">Pago</th></tr></thead><tbody>
       ${ml.semDinheiro.slice(0, 80).map(o => `<tr><td>${fdata(o.date_created.slice(0, 10))}</td><td class="muted">${esc(String(o.id))}</td><td>${esc((o.items || []).map(i => `${i.qty}× ${i.title}`).join(', '))}</td><td class="num">${brl(o.paid_amount)}</td></tr>`).join('') || vazioLinha(4, 'Nenhum.')}</tbody></table></div>
-      <div class="sub-title" style="margin-top:18px">Liberações sem pedido (${ml.semPedido.length} · ${brl(sum(ml.semPedido, x => x.v))}) ${ml.semPedido.length ? `<button class="btn btn-sm btn-soft" data-action="concOrigem" style="margin-left:10px" ${CONC_ORIGEM.carregando ? 'disabled' : ''}>${CONC_ORIGEM.carregando ? 'Consultando...' : 'Descobrir a origem no Mercado Pago'}</button>` : ''}</div>
+      <div class="sub-title" style="margin-top:18px">Liberações sem pedido (${ml.semPedido.length} · ${brl(sum(ml.semPedido, x => x.v))}${ml.anuladas ? ` · ${ml.anuladas} anuladas no próprio extrato não entram` : ''}) ${ml.semPedido.length ? `<button class="btn btn-sm btn-soft" data-action="concOrigem" style="margin-left:10px" ${CONC_ORIGEM.carregando ? 'disabled' : ''}>${CONC_ORIGEM.carregando ? 'Consultando...' : 'Descobrir a origem no Mercado Pago'}</button>` : ''}</div>
       <div class="table-wrap livre"><table><thead><tr><th>Data</th><th>Operação</th><th>Origem</th><th class="num">Valor</th></tr></thead><tbody>
       ${ml.semPedido.slice(0, 80).map(x => `<tr><td>${fdata(x.d)}</td><td class="muted">${esc(x.i)}</td><td>${origemPag(CONC_ORIGEM.mapa[x.i])}</td><td class="num">${brl(x.v)}</td></tr>`).join('') || vazioLinha(4, 'Nenhuma.')}</tbody></table></div>`;
   }
