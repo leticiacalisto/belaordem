@@ -211,6 +211,10 @@ tr.clic{cursor:pointer}
 .rep-lista li{align-items:center}
 td.sync-ml{color:#0f766e;background:#f1faf4}
 input.sync-ok{background:#e8f7ee;border-color:#bfe6cc}
+.sens{transition:filter .15s}
+body.priv .sens{filter:blur(6px);user-select:none}
+body.priv input[inputmode=decimal]{filter:blur(5px)}
+body.priv .icon-btn.priv-btn{background:var(--text);color:#fff}
 .sync-leg{display:inline-block;padding:1px 9px;border-radius:6px;font-size:12px}
 td.sync-ml::after{content:' ↻';font-size:10px;opacity:.7}
 tr.sub td{background:#fcfcfe;font-size:12px}
@@ -361,6 +365,7 @@ tr.sub.dr{display:table-row}
   </div>
   <div class="top-actions">
     <span class="save-status" id="save-status">Salvo neste navegador</span>
+    <button class="icon-btn priv-btn" id="btn-priv" data-action="privacidade" aria-label="Ocultar valores" aria-pressed="false" title="Ocultar valores em R$"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
     <button class="icon-btn notif-btn" id="btn-notif" data-action="notif" aria-label="Notificações" aria-haspopup="true"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 20a2 2 0 0 0 4 0"/></svg><span class="notif-badge" id="notif-badge" hidden></span></button>
     <button class="icon-btn" data-action="go" data-view="config" aria-label="Dados e backup"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </div>
@@ -3523,6 +3528,31 @@ function render() {
     if (el) { el.focus(); try { if (sel && sel[0] != null) el.setSelectionRange(sel[0], sel[1]); } catch (e) { /* campo sem seleção */ } }
   }
 }
+/* Modo privacidade: borra todos os valores em R$ da tela (para mostrar o site sem expor números) */
+const PRIV = { on: false };
+try { PRIV.on = localStorage.getItem('bo_privacidade') === '1'; } catch (e) { /* sem armazenamento */ }
+const RE_VALOR = /(-?R\$[\s ]*[\d.]*\d(?:,\d+)?)/;
+function esconderValores(raiz) {
+  if (!PRIV.on || !raiz) return;
+  const base = raiz.nodeType === 3 ? raiz.parentNode : raiz; if (!base || !base.closest) return;
+  if (base.closest('.sens, script, style, textarea')) return;
+  const w = document.createTreeWalker(raiz.nodeType === 3 ? base : raiz, NodeFilter.SHOW_TEXT, { acceptNode: n => /R\$/.test(n.nodeValue) && !n.parentElement.closest('.sens, script, style, textarea') ? 1 : 2 });
+  const nos = []; while (w.nextNode()) nos.push(w.currentNode);
+  for (const n of nos) {
+    const f = document.createDocumentFragment();
+    n.nodeValue.split(RE_VALOR).forEach((t, i) => { if (!t) return; if (i % 2) { const sp = document.createElement('span'); sp.className = 'sens'; sp.textContent = t; f.appendChild(sp); } else f.appendChild(document.createTextNode(t)); });
+    n.replaceWith(f);
+  }
+}
+function aplicarPrivacidade() {
+  document.body.classList.toggle('priv', PRIV.on);
+  const b = document.getElementById('btn-priv'); if (b) { b.setAttribute('aria-pressed', String(PRIV.on)); b.title = PRIV.on ? 'Mostrar valores' : 'Ocultar valores em R$'; }
+  if (PRIV.on) esconderValores(document.body);
+}
+try {
+  new MutationObserver(ms => { if (!PRIV.on) return; for (const m of ms) m.addedNodes.forEach(n => { if (n.nodeType === 1 || n.nodeType === 3) esconderValores(n); }); }).observe(document.body, { childList: true, subtree: true });
+  aplicarPrivacidade();
+} catch (e) { /* sem observador */ }
 let renderTimer = null;
 function agendarRender(ms) { clearTimeout(renderTimer); renderTimer = setTimeout(render, ms); }
 function go(view) {
@@ -3571,6 +3601,7 @@ const ACOES = {
     resetLimite(); render();
   },
   mais: el => { const [v, k] = el.dataset.path.split('.'); UI[v][k] += LIM[v]; render(); },
+  privacidade: () => { PRIV.on = !PRIV.on; try { localStorage.setItem('bo_privacidade', PRIV.on ? '1' : '0'); } catch (e) { /* ok */ } aplicarPrivacidade(); toast(PRIV.on ? 'Valores ocultos' : 'Valores à mostra'); },
   fecharModal: () => fecharModal(),
   fundoModal: (el, e) => { if (e.target === el) fecharModal(); },
   confirmarModal: () => { if (!MODAL?.onConfirm) return fecharModal(); const antes = MODAL; const r = MODAL.onConfirm(); if (r !== false && MODAL === antes) fecharModal(); },
