@@ -4175,6 +4175,18 @@ async function carregarNuvem() {
   } catch (e) { statusNuvem('Sem conexão com a nuvem: usando cópia deste navegador', true); }
 }
 
+/* CAPTCHA (Cloudflare Turnstile): a Site Key é pública; a Secret Key fica só no Supabase */
+const TURNSTILE_SITE_KEY = '0x4AAAAAAFhPo_gMMg_WBIyE';
+let captchaId = null, captchaToken = '';
+function captchaMontar() {
+  const el = $('#lg-captcha');
+  if (!el || !window.turnstile) return;
+  captchaToken = '';
+  captchaId = turnstile.render(el, { sitekey: TURNSTILE_SITE_KEY, callback: t => { captchaToken = t; }, 'expired-callback': () => { captchaToken = ''; }, 'error-callback': () => { captchaToken = ''; } });
+}
+function captchaReiniciar() { captchaToken = ''; if (window.turnstile && captchaId !== null) { try { turnstile.reset(captchaId); } catch (_) { /* widget já removido */ } } }
+window.boCaptchaPronto = captchaMontar;
+(function () { const s = document.createElement('script'); s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=boCaptchaPronto'; s.async = true; document.head.appendChild(s); })();
 function mostrarLogin(msg = '') {
   let el = $('#login-root');
   if (!el) { el = document.createElement('div'); el.id = 'login-root'; document.body.appendChild(el); }
@@ -4182,8 +4194,10 @@ function mostrarLogin(msg = '') {
     <img class="login-logo" src="assets/logo-horizontal.png" alt="Bela Ordem"><p style="text-align:center">Entre para acessar a plataforma.</p>
     <div class="f"><label for="lg-email">E-mail</label><input id="lg-email" type="email" autocomplete="username" required value="${esc(sessao()?.email || '')}"></div>
     <div class="f"><label for="lg-senha">Senha</label><input id="lg-senha" type="password" autocomplete="current-password" required></div>
+    <div id="lg-captcha"></div>
     <button class="btn btn-dark" type="submit">Entrar</button>
     <div class="login-erro" id="lg-erro" role="alert">${esc(msg)}</div></form></div>`;
+  captchaMontar();
   setTimeout(() => $('#lg-email')?.focus(), 30);
 }
 /* freio de tentativas de login neste aparelho (5 erros seguidos: espera de 30 s que dobra até 15 min); o limite de verdade fica no servidor */
@@ -4202,11 +4216,11 @@ document.addEventListener('submit', async e => {
   if (bl > 0) { er.textContent = `Muitas tentativas. Tente de novo em ${bl} s.`; return; }
   btn.disabled = true; er.textContent = '';
   try {
-    const j = await authFetch('token?grant_type=password', { email: $('#lg-email').value.trim(), password: $('#lg-senha').value });
+    const j = await authFetch('token?grant_type=password', { email: $('#lg-email').value.trim(), password: $('#lg-senha').value, gotrue_meta_security: { captcha_token: captchaToken } });
     gravarSessao(sessaoDe(j)); try { localStorage.removeItem('bo_lg'); } catch (_) { /* sem armazenamento */ }
     $('#login-root').innerHTML = '';
     await iniciarApp();
-  } catch (err) { loginFalhou(); er.textContent = /invalid/i.test(err.message) ? 'E-mail ou senha incorretos.' : err.message; btn.disabled = false; }
+  } catch (err) { loginFalhou(); captchaReiniciar(); er.textContent = /invalid/i.test(err.message) ? 'E-mail ou senha incorretos.' : err.message; btn.disabled = false; }
 });
 function sairDaConta() {
   gravarSessao(null);
