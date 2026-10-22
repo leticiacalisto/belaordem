@@ -211,6 +211,8 @@ tr.clic{cursor:pointer}
 .rep-lista li{align-items:center}
 td.sync-ml{color:#0f766e;background:#f1faf4}
 input.sync-ok{background:#e8f7ee;border-color:#bfe6cc}
+input.cel-edit{padding:4px 6px;border:1px solid var(--text);border-radius:6px;font:inherit;text-align:right;background:#fff}
+td[data-edit]{cursor:cell}
 .sens{transition:filter .15s}
 body.priv .sens{filter:blur(6px);user-select:none}
 body.priv input[inputmode=decimal]{filter:blur(5px)}
@@ -983,14 +985,14 @@ function vEstoque() {
     status: { rot: 'Status', cel: i => `<td>${chipStatus(i.status)}</td>`, ord: i => i.status },
     sku: { rot: 'SKU', num: true, cel: i => cSku(i), ord: i => P[i.produto]?.sku ?? 1e9 },
     produto: { rot: 'Produto', cel: i => celulaProduto(i, P), ord: i => nome(i) },
-    custo: { rot: 'Custo', num: true, cel: i => `<td class="num">${brl(i.custo)}</td>`, ord: i => i.custo ?? -1 },
-    venda: { rot: 'V. Venda', num: true, cel: i => `<td${sincML(i) ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho"' : ' class="num"'}>${brl(i.venda)}</td>`, ord: i => i.venda ?? -1 },
-    taxa: { rot: 'Taxa ML', num: true, cel: i => `<td${sincML(i) ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho"' : ' class="num"'}>${pct(i.taxa)}</td>`, ord: i => i.taxa ?? -1 },
-    frete: { rot: 'Frete', num: true, cel: i => `<td${sincML(i) ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho"' : ' class="num"'}>${brl(i.frete)}</td>`, ord: i => i.frete ?? -1 },
+    custo: { rot: 'Custo', num: true, cel: i => `<td class="num" data-edit="custo" title="Duplo clique para editar">${brl(i.custo)}</td>`, ord: i => i.custo ?? -1 },
+    venda: { rot: 'V. Venda', num: true, cel: i => `<td data-edit="venda"${sincML(i) && !i.sim?.v ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho. Duplo clique para simular outro valor"' : ` class="num" title="${i.sim?.v ? 'Valor simulado, diferente do ML. ' : ''}Duplo clique para editar"`}>${brl(i.venda)}</td>`, ord: i => i.venda ?? -1 },
+    taxa: { rot: 'Taxa ML', num: true, cel: i => `<td data-edit="taxa"${sincML(i) && !i.sim?.t ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho. Duplo clique para simular outro valor"' : ` class="num" title="${i.sim?.t ? 'Valor simulado, diferente do ML. ' : ''}Duplo clique para editar"`}>${pct(i.taxa)}</td>`, ord: i => i.taxa ?? -1 },
+    frete: { rot: 'Frete', num: true, cel: i => `<td data-edit="frete"${sincML(i) && !i.sim?.f ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho. Duplo clique para simular outro valor"' : ` class="num" title="${i.sim?.f ? 'Valor simulado, diferente do ML. ' : ''}Duplo clique para editar"`}>${brl(i.frete)}</td>`, ord: i => i.frete ?? -1 },
     lucro: { rot: 'Lucro', num: true, cel: i => tdLucro(i), ord: i => lucro(i) ?? -1e9 },
     margem: { rot: 'Margem', num: true, cel: i => `<td class="num">${pct(margem(i))}</td>`, ord: i => margem(i) ?? -9 },
     anuncio: { rot: 'Anúncio ML', cel: i => `<td>${celAnuncio(i.produto)}</td>`, ord: i => rankAn(i.produto) },
-    vfisica: { rot: 'V. V. Física', num: true, cel: i => `<td class="num">${i.precoFisica != null ? brl(i.precoFisica) : '—'}</td>`, ord: i => i.precoFisica ?? -1 },
+    vfisica: { rot: 'V. V. Física', num: true, cel: i => `<td class="num" data-edit="vfisica" title="Duplo clique para editar">${i.precoFisica != null ? brl(i.precoFisica) : '—'}</td>`, ord: i => i.precoFisica ?? -1 },
     validade: { rot: 'Validade', cel: i => `<td>${chipValidade(i.validade)}</td>`, ord: i => i.validade || '9999' },
     lote: { rot: 'Lote', cel: i => `<td class="muted">${esc(i.lote || '—')}</td>`, ord: i => i.lote || '' },
     categoria: { rot: 'Categoria', cel: i => `<td><div class="chips">${(P[i.produto]?.tipos || []).map(t => chip('tipo', t)).join('')}</div></td>`, ord: i => (P[i.produto]?.tipos || [])[0] || '' },
@@ -1831,6 +1833,49 @@ function alvoML(pid) {
   const a = [...as].sort((x, y) => (ult[y.item_id] || '').localeCompare(ult[x.item_id] || '') || x.preco - y.preco)[0];
   return { a, venda: Number(a.preco), taxa: a.taxa_pct != null ? Math.round(Number(a.taxa_pct) * 1e5) / 1e5 : null, frete: (fe => fe.origem === 'sem dados' ? null : fe.v)(freteEstimado(a, anuncioProduto(a))) };
 }
+/* valor de venda/taxa/frete editado na mão numa unidade à venda com anúncio ativo = simulação de preço: não é sobrescrito pelo ML e deixa de ficar verde */
+function marcarSimulacao(u, mudou) {
+  const alvo = u.status === 'avenda' ? alvoML(u.produto) : null;
+  if (!alvo) { delete u.sim; return; }
+  const s = { ...(u.sim || {}) };
+  if (mudou.v) { if (alvo.venda != null && Math.abs((u.venda || 0) - alvo.venda) > 0.005) s.v = 1; else delete s.v; }
+  if (mudou.t) { if (alvo.taxa != null && Math.abs((u.taxa ?? -1) - alvo.taxa) > 0.0005) s.t = 1; else delete s.t; }
+  if (mudou.f) { if (alvo.frete != null && Math.abs((u.frete ?? -1) - alvo.frete) > 0.005) s.f = 1; else delete s.f; }
+  if (Object.keys(s).length) u.sim = s; else delete u.sim;
+}
+/* edição direta na tabela do estoque (duplo clique na célula) */
+const CAMPOS_INLINE = { custo: { campo: 'custo' }, venda: { campo: 'venda', sim: 'v' }, taxa: { campo: 'taxa', sim: 't', pct: true }, frete: { campo: 'frete', sim: 'f' }, vfisica: { campo: 'precoFisica', nulo: true } };
+let CLIQUE_LOTE = null;
+function editarCelula(td) {
+  const tr = td.closest('tr'), lote = LOTES[+tr?.dataset.lote], cfg = CAMPOS_INLINE[td.dataset.edit];
+  if (!lote || !cfg || td.querySelector('input')) return;
+  const atual = lote.it[cfg.campo], ini = atual == null ? '' : fmtIn(cfg.pct ? atual * 100 : atual);
+  const largura = td.offsetWidth;
+  td.innerHTML = `<input class="cel-edit" inputmode="decimal" value="${ini}" aria-label="Editar" style="width:${Math.max(largura - 8, 70)}px">`;
+  const inp = td.querySelector('input'); inp.focus(); inp.select();
+  let feito = false;
+  const sair = gravar => {
+    if (feito) return; feito = true;
+    if (!gravar) return render();
+    const txt = inp.value.trim(), n = txt === '' ? null : parseNum(txt);
+    if ((n == null && !cfg.nulo) || Number.isNaN(n)) { erro('Confira o valor digitado.'); return render(); }
+    const novo = n == null ? null : cfg.pct ? n / 100 : n;
+    if (novo === atual || (novo != null && atual != null && Math.abs(novo - atual) < 1e-9)) return render();
+    const ids = new Set(lote.ids);
+    for (const u of DB.estoque) {
+      if (!ids.has(u.id)) continue;
+      u[cfg.campo] = novo;
+      if (cfg.sim) marcarSimulacao(u, { [cfg.sim]: 1 });
+    }
+    commit('Valor atualizado');
+  };
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sair(true); } else if (e.key === 'Escape') { e.stopPropagation(); sair(false); } });
+  inp.addEventListener('blur', () => sair(true));
+}
+document.addEventListener('dblclick', e => {
+  const td = e.target.closest('td[data-edit]'); if (!td || td.querySelector('input')) return;
+  clearTimeout(CLIQUE_LOTE); e.preventDefault(); editarCelula(td);
+});
 function aplicarAnuncios() {
   const porProd = {};
   for (const a of ML.anuncios || []) {
@@ -1848,9 +1893,15 @@ function aplicarAnuncios() {
     for (const u of DB.estoque) {
       if (u.produto !== pid || u.status !== 'avenda') continue;
       let m = false;
-      if (alvo.venda > 0 && Math.abs((u.venda || 0) - alvo.venda) > 0.005) { if (antes == null && u.venda != null) antes = u.venda; u.venda = alvo.venda; m = true; }
-      if (alvo.taxa != null && Math.abs((u.taxa ?? -1) - alvo.taxa) > 0.0005) { u.taxa = alvo.taxa; m = true; }
-      if (alvo.frete != null && Math.abs((u.frete ?? -1) - alvo.frete) > 0.005) { u.frete = alvo.frete; m = true; }
+      if (u.sim) {   // valores simulados na mão: só voltam a seguir o ML quando ficarem iguais a ele
+        if (u.sim.v && Math.abs((u.venda || 0) - alvo.venda) <= 0.005) delete u.sim.v;
+        if (u.sim.t && alvo.taxa != null && Math.abs((u.taxa ?? -1) - alvo.taxa) <= 0.0005) delete u.sim.t;
+        if (u.sim.f && alvo.frete != null && Math.abs((u.frete ?? -1) - alvo.frete) <= 0.005) delete u.sim.f;
+        if (!Object.keys(u.sim).length) delete u.sim;
+      }
+      if (!u.sim?.v && alvo.venda > 0 && Math.abs((u.venda || 0) - alvo.venda) > 0.005) { if (antes == null && u.venda != null) antes = u.venda; u.venda = alvo.venda; m = true; }
+      if (!u.sim?.t && alvo.taxa != null && Math.abs((u.taxa ?? -1) - alvo.taxa) > 0.0005) { u.taxa = alvo.taxa; m = true; }
+      if (!u.sim?.f && alvo.frete != null && Math.abs((u.frete ?? -1) - alvo.frete) > 0.005) { u.frete = alvo.frete; m = true; }
       if (m) n++;
     }
     if (n) { mudou += n; if (antes != null && Math.abs(antes - alvo.venda) > 0.005) precos.push(`${(DB.produtos.find(x => x.id === pid)?.nome || '').slice(0, 30)}: ${brl(antes)} → ${brl(alvo.venda)}`); }
@@ -2834,13 +2885,23 @@ function modalDevolver(lote) {
 }
 
 /* ---------- Editar lote / unidade ---------- */
+let ALVO_LOTE = null;
+function atualizarLucroLote() {
+  const el = document.getElementById('ml-lucro'); if (!el) return;
+  const [custo, venda, taxa, frete] = ['ml-custo', 'ml-venda', 'ml-taxa', 'ml-frete'].map(id => parseNum(val(id)));
+  const ok = [custo, venda, taxa, frete].every(x => !Number.isNaN(x)) && venda;
+  const i = ok ? { custo, venda, taxa: (taxa || 0) / 100, frete } : null, l = i ? lucro(i) : null;
+  el.innerHTML = l == null ? 'Preencha custo e V. Venda para ver o lucro.' : `Lucro por unidade: <b class="${l < 0 ? 'neg' : ''}">${brl(l)}</b> · margem <b class="${l < 0 ? 'neg' : ''}">${pct(margem(i))}</b>`;
+  if (ALVO_LOTE) for (const [id, v, tol, alvoV] of [['ml-venda', venda, 0.005, ALVO_LOTE.venda], ['ml-taxa', Number.isNaN(taxa) || taxa == null ? null : taxa / 100, 0.0005, ALVO_LOTE.taxa], ['ml-frete', frete, 0.005, ALVO_LOTE.frete]]) { const f = document.getElementById(id); if (f) f.classList.toggle('sync-ok', alvoV != null && v != null && Math.abs(v - alvoV) <= tol); }
+}
 function modalLote(lote, opc = {}) {
   const i = lote.it, P = mapaProdutos(), n = lote.ids.length;
   const vfs = DB.vendasFisicas.slice().sort((a, b) => (b.data || '').localeCompare(a.data || ''));
   const ansP = mapaAnuncios()[i.produto] || [], trava = i.status === 'avenda' && ansP.some(a => a.status === 'active'), alvo = trava ? alvoML(i.produto) : null;
   const igual = (x, y, tol) => x != null && y != null && Math.abs(x - y) <= tol;
   const okV = !!alvo && igual(i.venda, alvo.venda, 0.005), okT = !!alvo && igual(i.taxa, alvo.taxa, 0.0005), okF = !!alvo && igual(i.frete, alvo.frete, 0.005);
-  const attrSync = ok => trava ? `readonly class="${ok ? 'sync-ok' : ''}" title="${ok ? 'Sincronizado com o anúncio do ML' : 'Ainda não sincronizado: atualiza no próximo ciclo ou aperte Atualizar do ML agora'}"` : '';
+  ALVO_LOTE = alvo;
+  const attrSync = ok => trava ? `class="${ok ? 'sync-ok' : ''}" title="${ok ? 'Igual ao anúncio do ML' : 'Diferente do anúncio do ML: fica como simulação até você enviar o valor ao ML'}"` : '';
   const blocoML = ansP.length ? `<div class="info" style="margin-bottom:12px"><b>Anúncios deste produto no ML</b><br>${ansP.map(a => `<span class="chip ${a.status === 'active' ? 'c-green' : 'c-orange'}">${a.status === 'active' ? 'Ativo' : 'Inativo'}</span> ${esc((a.titulo || '').slice(0, 54))} · ${brl(a.preco)} · taxa ${a.taxa_pct != null ? pct(a.taxa_pct) : '—'} · ML ${a.qtd ?? '—'} <button class="btn-link" data-action="mlAbrirAnuncio" data-item="${esc(a.item_id)}">abrir</button>`).join('<br>')}${trava ? `<br><span class="sync-leg" style="background:#e8f7ee">verde</span> <span class="muted">= veio do anúncio e está atualizado · </span><span class="sync-leg" style="background:#fff;border:1px solid var(--line)">branco</span> <span class="muted">= não sincronizado. Esses campos ficam bloqueados enquanto houver anúncio ativo. Para vender por outro valor numa venda física, use o V. Venda Física.</span> <button class="btn btn-sm btn-soft" data-action="mlSincronizarAgora">Atualizar do ML agora</button>` : ''}</div>` : '';
   const corpo = `${blocoML}<div class="info">${n > 1 ? `As alterações valem para as <b>${n} unidades</b> deste lote.` : 'Editando 1 unidade.'}</div>
   <div class="form-grid">${campo('ml-prod', 'Produto', `<input id="ml-prod" list="dl-ml" value="${esc(P[i.produto] ? labelProduto(P[i.produto]) : '')}" autocomplete="off">${datalistProdutos('dl-ml', false)}`, 'full')}</div>
@@ -2865,7 +2926,8 @@ function modalLote(lote, opc = {}) {
   <div class="form-grid">
     ${campo('ml-lote', 'Lote (da NF)', inputTxt('ml-lote', i.lote))}
   </div>
-  <p class="hint" style="margin:0">Lucro atual por unidade: <b>${brl(lucro(i))}</b> · margem ${pct(margem(i))}</p>`;
+  <p class="hint" id="ml-lucro" style="margin:0">Lucro por unidade: <b class="${(lucro(i) ?? 0) < 0 ? 'neg' : ''}">${brl(lucro(i))}</b> · margem <b class="${(lucro(i) ?? 0) < 0 ? 'neg' : ''}">${pct(margem(i))}</b></p>
+  ${trava ? '<p class="hint" style="margin:6px 0 0">Mudar V. Venda, taxa ou frete aqui é uma simulação: não vai para o ML e o campo deixa de ficar verde. Para valer no ML, use o botão de enviar valor.</p>' : ''}`;
   abrirModal({
     titulo: n > 1 ? `Editar lote (${n} unidades)` : 'Editar unidade', corpo, largura: 760,
     rodape: rodapePadrao('Salvar', `<button class="btn btn-sm btn-danger left" data-action="excluirLote">Excluir ${n > 1 ? 'lote' : 'unidade'}</button>`),
@@ -2876,6 +2938,7 @@ function modalLote(lote, opc = {}) {
       const nums = lerNums({ custo: 'ml-custo', venda: 'ml-venda', taxa: 'ml-taxa', frete: 'ml-frete', pvf: 'ml-pvf' });
       if (!nums) return erro('Confira os valores digitados.');
       const status = val('ml-status');
+      const mudou = { v: nums.venda !== i.venda, t: (nums.taxa == null ? null : nums.taxa / 100) !== (i.taxa ?? null), f: nums.frete !== i.frete };
       const ids = new Set(lote.ids);
       const forn = val('ml-forn') || null;
       adicionarNaLista('fornecedores', forn);
@@ -2888,6 +2951,7 @@ function modalLote(lote, opc = {}) {
           vendaFisica: status === 'vendido' ? (val('ml-vf') || null) : null,
           fornecedor: forn, nf: val('ml-nf') || null, dCompra: val('ml-dcompra') || null, validade: val('ml-val') || null, lote: val('ml-lote') || null,
         });
+        marcarSimulacao(u, mudou);
       }
       commit('Alterações salvas');
       if (opc.voltar) opc.voltar();
@@ -3926,6 +3990,10 @@ const ACOES = {
 document.addEventListener('click', e => {
   if (!e.target.closest('.search')) $('#busca-res').hidden = true;
   const el = e.target.closest('[data-action]');
+  if (e.target.closest('input.cel-edit')) return;
+  if (el && el.dataset.action === 'editarLote' && e.target.closest('td[data-edit]')) {   // duplo clique edita na célula; clique simples abre a janela
+    clearTimeout(CLIQUE_LOTE); CLIQUE_LOTE = setTimeout(() => ACOES.editarLote(el, e), 300); return;
+  }
   if (el && ACOES[el.dataset.action]) ACOES[el.dataset.action](el, e);
 });
 document.addEventListener('input', e => {
@@ -3940,6 +4008,7 @@ document.addEventListener('input', e => {
   if (el.classList.contains('mc-prod')) { el.closest('tr').classList.remove('mc-pend'); preencherLinhaCompra(el.closest('tr')); }
   if (el.classList.contains('vx-prod')) preencherLinhaVx(el.closest('tr'));
   if (el.closest('.mc-linha')) atualizarMargemCompra(el.closest('.mc-linha'));
+  if (/^ml-(custo|venda|taxa|frete)$/.test(el.id)) atualizarLucroLote();
   if (el.classList.contains('vf-prod')) preencherLinhaFisica(el.closest('tr'));
 });
 document.addEventListener('change', e => {
