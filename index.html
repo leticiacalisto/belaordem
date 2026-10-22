@@ -721,6 +721,22 @@ const tdLucro = i => { const l = lucro(i); return `<td class="num ${l != null &&
 function chaveLote(i) {
   return [i.produto, i.custo, i.venda, i.taxa, i.frete, i.status, i.dVenda, i.validade, i.lote, i.fornecedor, i.nf, i.dCompra, i.vendaFisica].join('|');
 }
+/* À venda: sempre uma linha por produto (SKU), com custo médio e "+N" onde os lotes diferem */
+function agruparSKU(itens) {
+  const m = new Map();
+  for (const i of itens) { let g = m.get(i.produto); if (!g) { g = { ids: [], un: [] }; m.set(i.produto, g); } g.ids.push(i.id); g.un.push(i); }
+  return [...m.values()].map(g => {
+    const us = g.un, first = [...us].sort((a, b) => (a.validade || '9').localeCompare(b.validade || '9'))[0];
+    const medio = f => { const v = us.map(u => u[f]).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const mix = {};
+    for (const f of ['custo', 'venda', 'taxa', 'frete', 'validade', 'lote', 'nf', 'fornecedor', 'dCompra']) mix[f] = new Set(us.map(u => typeof u[f] === 'number' ? Math.round(u[f] * 1e4) : (u[f] ?? null))).size;
+    const sim = {}; us.forEach(u => Object.assign(sim, u.sim || {}));
+    const it = { ...first, custo: medio('custo'), sim: Object.keys(sim).length ? sim : undefined };
+    for (const f of ['venda', 'taxa', 'frete']) if (mix[f] > 1) it[f] = medio(f);
+    return { ids: g.ids, it, mix };
+  });
+}
+const maisN = (txt, g, f) => g?.mix?.[f] > 1 ? `${txt} <span class="hint" title="Os lotes deste produto têm valores diferentes">+${g.mix[f] - 1}</span>` : txt;
 function agrupar(itens, ativo) {
   if (!ativo) return itens.map(i => ({ ids: [i.id], it: i }));
   const m = new Map();
@@ -950,7 +966,7 @@ function vEstoque() {
   if (U.tab === 'avenda') itens.sort((a, b) => sku(a) - sku(b) || (a.validade || '9').localeCompare(b.validade || '9'));
   else if (U.tab === 'vendido') itens.sort((a, b) => (b.dVenda || '').localeCompare(a.dVenda || '') || sku(a) - sku(b));
   else itens.sort((a, b) => nome(a).localeCompare(nome(b), 'pt-BR') || (b.dCompra || '').localeCompare(a.dCompra || ''));
-  const grupos = agrupar(itens, U.agrupar);
+  const grupos = U.tab === 'avenda' ? agruparSKU(itens) : agrupar(itens, U.agrupar);
   LOTES = grupos;
   const vis = grupos.slice(0, U.limite);
   const fornecedores = [...new Set(DB.estoque.map(i => i.fornecedor).filter(Boolean))].sort();
@@ -985,7 +1001,7 @@ function vEstoque() {
     status: { rot: 'Status', cel: i => `<td>${chipStatus(i.status)}</td>`, ord: i => i.status },
     sku: { rot: 'SKU', num: true, cel: i => cSku(i), ord: i => P[i.produto]?.sku ?? 1e9 },
     produto: { rot: 'Produto', cel: i => celulaProduto(i, P), ord: i => nome(i) },
-    custo: { rot: 'Custo', num: true, cel: i => `<td class="num" data-edit="custo" title="Duplo clique para editar">${brl(i.custo)}</td>`, ord: i => i.custo ?? -1 },
+    custo: { rot: 'Custo', num: true, cel: (i, g) => g?.mix?.custo > 1 ? `<td class="num" title="Custo médio de ${g.mix.custo} custos diferentes. Abra a janela do produto para ver por lote.">${brl(i.custo)} <span class="hint">méd.</span></td>` : `<td class="num" data-edit="custo" title="Duplo clique para editar">${brl(i.custo)}</td>`, ord: i => i.custo ?? -1 },
     venda: { rot: 'V. Venda', num: true, cel: i => `<td data-edit="venda"${sincML(i) && !i.sim?.v ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho. Duplo clique para simular outro valor"' : ` class="num" title="${i.sim?.v ? 'Valor simulado, diferente do ML. ' : ''}Duplo clique para editar"`}>${brl(i.venda)}</td>`, ord: i => i.venda ?? -1 },
     taxa: { rot: 'Taxa ML', num: true, cel: i => `<td data-edit="taxa"${sincML(i) && !i.sim?.t ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho. Duplo clique para simular outro valor"' : ` class="num" title="${i.sim?.t ? 'Valor simulado, diferente do ML. ' : ''}Duplo clique para editar"`}>${pct(i.taxa)}</td>`, ord: i => i.taxa ?? -1 },
     frete: { rot: 'Frete', num: true, cel: i => `<td data-edit="frete"${sincML(i) && !i.sim?.f ? ' class="num sync-ml" title="Vem do anúncio do ML e atualiza sozinho. Duplo clique para simular outro valor"' : ` class="num" title="${i.sim?.f ? 'Valor simulado, diferente do ML. ' : ''}Duplo clique para editar"`}>${brl(i.frete)}</td>`, ord: i => i.frete ?? -1 },
@@ -993,12 +1009,12 @@ function vEstoque() {
     margem: { rot: 'Margem', num: true, cel: i => `<td class="num">${pct(margem(i))}</td>`, ord: i => margem(i) ?? -9 },
     anuncio: { rot: 'Anúncio ML', cel: i => `<td>${celAnuncio(i.produto)}</td>`, ord: i => rankAn(i.produto) },
     vfisica: { rot: 'V. V. Física', num: true, cel: i => `<td class="num" data-edit="vfisica" title="Duplo clique para editar">${i.precoFisica != null ? brl(i.precoFisica) : '—'}</td>`, ord: i => i.precoFisica ?? -1 },
-    validade: { rot: 'Validade', cel: i => `<td>${chipValidade(i.validade)}</td>`, ord: i => i.validade || '9999' },
-    lote: { rot: 'Lote', cel: i => `<td class="muted">${esc(i.lote || '—')}</td>`, ord: i => i.lote || '' },
+    validade: { rot: 'Validade', cel: (i, g) => `<td>${maisN(chipValidade(i.validade), g, 'validade')}</td>`, ord: i => i.validade || '9999' },
+    lote: { rot: 'Lote', cel: (i, g) => `<td class="muted">${maisN(esc(i.lote || '—'), g, 'lote')}</td>`, ord: i => i.lote || '' },
     categoria: { rot: 'Categoria', cel: i => `<td><div class="chips">${(P[i.produto]?.tipos || []).map(t => chip('tipo', t)).join('')}</div></td>`, ord: i => (P[i.produto]?.tipos || [])[0] || '' },
-    fornecedor: { rot: 'Fornecedor', cel: i => `<td>${chip('fornecedor', i.fornecedor)}</td>`, ord: i => i.fornecedor || '' },
-    nf: { rot: 'NF', cel: i => `<td class="muted">${esc(i.nf || '—')}</td>`, ord: i => i.nf || '' },
-    compra: { rot: 'Compra', cel: i => `<td class="muted">${fdata(i.dCompra)}</td>`, ord: i => i.dCompra || '' },
+    fornecedor: { rot: 'Fornecedor', cel: (i, g) => `<td>${maisN(chip('fornecedor', i.fornecedor), g, 'fornecedor')}</td>`, ord: i => i.fornecedor || '' },
+    nf: { rot: 'NF', cel: (i, g) => `<td class="muted">${maisN(esc(i.nf || '—'), g, 'nf')}</td>`, ord: i => i.nf || '' },
+    compra: { rot: 'Compra', cel: (i, g) => `<td class="muted">${maisN(fdata(i.dCompra), g, 'dCompra')}</td>`, ord: i => i.dCompra || '' },
     canal: { rot: 'Canal', cel: i => `<td>${canal(i)}</td>`, ord: i => i.vendaFisica ? (VF[i.vendaFisica]?.pessoa || 'Venda física') : 'Mercado Livre' },
   };
   const PADRAO = {
@@ -2938,19 +2954,23 @@ function modalLote(lote, opc = {}) {
       const nums = lerNums({ custo: 'ml-custo', venda: 'ml-venda', taxa: 'ml-taxa', frete: 'ml-frete', pvf: 'ml-pvf' });
       if (!nums) return erro('Confira os valores digitados.');
       const status = val('ml-status');
-      const mudou = { v: nums.venda !== i.venda, t: (nums.taxa == null ? null : nums.taxa / 100) !== (i.taxa ?? null), f: nums.frete !== i.frete };
       const ids = new Set(lote.ids);
       const forn = val('ml-forn') || null;
       adicionarNaLista('fornecedores', forn);
+      const vf = status === 'vendido' ? (val('ml-vf') || null) : null;
+      const novo = {
+        produto: prod.id, custo: nums.custo, precoFisica: nums.pvf, venda: (status === 'vendido' && val('ml-vf') && nums.pvf != null) ? nums.pvf : nums.venda, taxa: nums.taxa == null ? null : nums.taxa / 100, frete: nums.frete,
+        status, dVenda: status === 'vendido' ? (val('ml-dvenda') || hojeISO()) : null, vendaFisica: vf,
+        fornecedor: forn, nf: val('ml-nf') || null, dCompra: val('ml-dcompra') || null, validade: val('ml-val') || null, lote: val('ml-lote') || null,
+      };
+      // lote com valores diferentes entre as unidades (ex.: custos de compras distintas): só grava o campo que você mudou
+      const difere = (k, a, b) => { a = a ?? null; b = b ?? null; return typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) > 1e-3 * (k === 'taxa' ? 0.01 : 1) : a !== b; };
+      const mudaram = Object.keys(novo).filter(k => difere(k, novo[k], i[k]));
+      const mudou = { v: mudaram.includes('venda'), t: mudaram.includes('taxa'), f: mudaram.includes('frete') };
       for (const u of DB.estoque) {
         if (!ids.has(u.id)) continue;
-        Object.assign(u, {
-          produto: prod.id, custo: nums.custo, precoFisica: nums.pvf, venda: (status === 'vendido' && val('ml-vf') && nums.pvf != null) ? nums.pvf : nums.venda, taxa: nums.taxa == null ? null : nums.taxa / 100, frete: nums.frete,
-          status, unid: status === 'vendido' ? 0 : 1,
-          dVenda: status === 'vendido' ? (val('ml-dvenda') || hojeISO()) : null,
-          vendaFisica: status === 'vendido' ? (val('ml-vf') || null) : null,
-          fornecedor: forn, nf: val('ml-nf') || null, dCompra: val('ml-dcompra') || null, validade: val('ml-val') || null, lote: val('ml-lote') || null,
-        });
+        for (const k of mudaram) u[k] = novo[k];
+        if (mudaram.includes('status')) u.unid = status === 'vendido' ? 0 : 1;
         marcarSimulacao(u, mudou);
       }
       commit('Alterações salvas');
