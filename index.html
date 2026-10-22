@@ -966,7 +966,7 @@ function vEstoque() {
   if (U.tab === 'avenda') itens.sort((a, b) => sku(a) - sku(b) || (a.validade || '9').localeCompare(b.validade || '9'));
   else if (U.tab === 'vendido') itens.sort((a, b) => (b.dVenda || '').localeCompare(a.dVenda || '') || sku(a) - sku(b));
   else itens.sort((a, b) => nome(a).localeCompare(nome(b), 'pt-BR') || (b.dCompra || '').localeCompare(a.dCompra || ''));
-  const grupos = U.tab === 'avenda' ? agruparSKU(itens) : agrupar(itens, U.agrupar);
+  const grupos = U.tab === 'avenda' && U.agrupar ? agruparSKU(itens) : agrupar(itens, U.agrupar);
   LOTES = grupos;
   const vis = grupos.slice(0, U.limite);
   const fornecedores = [...new Set(DB.estoque.map(i => i.fornecedor).filter(Boolean))].sort();
@@ -1042,7 +1042,7 @@ function vEstoque() {
   <div class="toolbar">${campoBusca('est-q', 'estoque.q', U.q, 'Buscar produto, SKU, NF, cliente...')}
     ${select('estoque.fornecedor', U.fornecedor, [['', 'Todos os fornecedores'], ...fornecedores.map(f => [f, f])], 'Fornecedor')}
     ${vendidoTab ? select('estoque.mes', U.mes, [['', 'Todos os meses'], ...meses.map(m => [m, nomeMes(m)])], 'Mês da venda') : ''}
-    <label class="check"><input type="checkbox" data-bind="estoque.agrupar" ${U.agrupar ? 'checked' : ''}> Agrupar unidades iguais</label>
+    <label class="check"><input type="checkbox" data-bind="estoque.agrupar" ${U.agrupar ? 'checked' : ''}> ${U.tab === 'avenda' ? 'Agrupar por SKU' : 'Agrupar unidades iguais'}</label>
     <button class="btn btn-sm btn-soft" style="margin-left:auto" data-action="estoqueColunas" title="Escolher quais colunas aparecem" aria-label="Personalizar colunas">${ic('sliders', 16)} Colunas</button></div>
   <div class="summary"><span><b>${itens.length.toLocaleString('pt-BR')}</b> unidades</span><span>Custo <b>${brl(sum(itens, i => i.custo))}</b></span><span>${vendidoTab ? 'Faturamento' : 'Valor de venda'} <b>${brl(sum(itens, i => i.venda))}</b></span><span>${vendidoTab ? 'Lucro' : 'Lucro previsto'} <b>${brl(sum(itens, lucro))}</b></span></div>
   <div class="table-wrap"><table><thead><tr>${thead}</tr></thead><tbody>${rows.join('') || vazioLinha(nCols)}</tbody></table></div>
