@@ -2595,6 +2595,8 @@ async function mlAuto(opc = {}) {
     ML.status = await mlChamar('status');
     if (!ML.status.connected) return;
     ML.autoMsg = 'Sincronizando com o Mercado Livre...'; if (UI.view === 'config') render();
+    // mostra já os pedidos guardados; se a sincronização travar, a tela não fica em "Carregando"
+    if (!ML.pedidos) { try { ML.pedidos = await mlListarTudo(); if (['hoje', 'config'].includes(UI.view)) render(); } catch (_) { /* segue para a sincronização */ } }
     await mlChamar('sync', { days: opc.dias || 10 });
     for (let k = 0; k < 6; k++) { const r = await mlChamar('fretes', { limite: 60 }); if (!r.restantes || !r.feitos) break; }
     try { await mlChamar('envios', { limite: 40 }); } catch (_) { /* função ainda sem a ação */ }
@@ -4129,8 +4131,13 @@ async function tokenValido() {
 async function chamar(fn, { method = 'GET', body } = {}) {
   const t = await tokenValido();
   if (!t) { mostrarLogin(); throw new Error('Sessão expirada. Entre de novo.'); }
-  const r = await fetch(`${ML_URL}/${fn}`, { method, headers: { authorization: `Bearer ${t}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
-  const j = await r.json().catch(() => ({}));
+  const ctl = new AbortController(), corte = setTimeout(() => ctl.abort(), 120000);
+  let r, j;
+  try {
+    r = await fetch(`${ML_URL}/${fn}`, { method, signal: ctl.signal, headers: { authorization: `Bearer ${t}`, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    j = await r.json().catch(() => ({}));
+  } catch (e) { throw new Error(e.name === 'AbortError' ? 'O servidor demorou demais para responder' : e.message); }
+  finally { clearTimeout(corte); }
   if (r.status === 401) { gravarSessao(null); mostrarLogin('Este e-mail não tem acesso ao site.'); throw new Error(j.error || 'não autorizado'); }
   if (!r.ok) { const e = new Error(j.error || `Erro ${r.status}`); e.status = r.status; throw e; }
   return j;
