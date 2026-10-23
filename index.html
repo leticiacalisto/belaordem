@@ -583,7 +583,7 @@ function separadosIds() {
 function statsProdutos() {
   const SEPARADOS = separadosIds();
   const m = {};
-  for (const p of DB.produtos) m[p.id] = { disp: 0, sep: 0, vend: 0, n: 0, sc: 0, cc: 0, sv: 0, cv: 0, sm: 0, cm: 0 };
+  for (const p of DB.produtos) m[p.id] = { disp: 0, sep: 0, vend: 0, n: 0, sc: 0, cc: 0, sv: 0, cv: 0, sm: 0, cm: 0, est: { sc: 0, cc: 0, sv: 0, cv: 0, sm: 0, cm: 0 } };
   for (const i of DB.estoque) {
     const s = m[i.produto];
     if (!s) continue;
@@ -591,13 +591,17 @@ function statsProdutos() {
     s.disp += i.unid || 0;
     if (i.status === 'vendido') s.vend++;
     if (SEPARADOS.has(i.id)) s.sep++;
-    if (i.custo != null) { s.sc += i.custo; s.cc++; }
-    if (i.venda != null) {
-      s.sv += i.venda; s.cv++;
-      const mg = margem(i);
-      if (mg != null && isFinite(mg)) { s.sm += mg; s.cm++; }
+    // médias de custo/venda/margem: só das unidades em estoque; sem estoque, de todo o histórico
+    for (const t of (i.unid || 0) > 0 ? [s, s.est] : [s]) {
+      if (i.custo != null) { t.sc += i.custo; t.cc++; }
+      if (i.venda != null) {
+        t.sv += i.venda; t.cv++;
+        const mg = margem(i);
+        if (mg != null && isFinite(mg)) { t.sm += mg; t.cm++; }
+      }
     }
   }
+  for (const s of Object.values(m)) { if (s.disp > 0) Object.assign(s, s.est); delete s.est; }
   return m;
 }
 function statsVF() {
@@ -929,7 +933,7 @@ function vProdutos() {
   let corpo;
   if (U.tab === 'tabela') {
     const vis = ps.slice(0, U.limite);
-    corpo = `<div class="table-wrap"><table class="tb-prod"><thead><tr>${th('sku', 'SKU', true)}${th('nome', 'Nome')}${th('fab', 'Fabricante')}${th('cat', 'Categoria')}${th('disp', 'Disp.', true, 'Disponível: ordenar por estoque disponível')}<th class="num" title="Vendidos no ML e ainda não enviados (estão aqui fisicamente)">Sep.</th><th class="num" title="Físico real = disponível + separado">Físico</th>${th('vend', 'Vend.', true, 'Vendidos: ordenar por unidades vendidas')}${th('custo', 'Custo', true, 'Custo médio')}${th('venda', 'Venda', true, 'Valor de venda médio')}${th('margem', 'Margem', true, 'Margem média')}${th('ncm', 'NCM')}${th('ean', 'EAN')}<th></th></tr></thead><tbody>
+    corpo = `<div class="table-wrap"><table class="tb-prod"><thead><tr>${th('sku', 'SKU', true)}${th('nome', 'Nome')}${th('fab', 'Fabricante')}${th('cat', 'Categoria')}${th('disp', 'Disp.', true, 'Disponível: ordenar por estoque disponível')}<th class="num" title="Vendidos no ML e ainda não enviados (estão aqui fisicamente)">Sep.</th><th class="num" title="Físico real = disponível + separado">Físico</th>${th('vend', 'Vend.', true, 'Vendidos: ordenar por unidades vendidas')}${th('custo', 'Custo', true, 'Custo médio das unidades em estoque (sem estoque: de todo o histórico)')}${th('venda', 'Venda', true, 'Valor de venda médio')}${th('margem', 'Margem', true, 'Margem média')}${th('ncm', 'NCM')}${th('ean', 'EAN')}<th></th></tr></thead><tbody>
     ${vis.length ? vis.map(p => {
       const s = st[p.id];
       return `<tr class="clic" data-action="editarProduto" data-id="${p.id}"><td class="num muted">${p.sku ?? '—'}</td><td class="prod"><div class="pn">${esc(p.nome)}</div></td><td>${chip('fabricante', p.fabricante)}</td><td><div class="chips">${(p.tipos || []).map(t => chip('tipo', t)).join('')}</div></td>
