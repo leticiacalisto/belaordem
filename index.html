@@ -3626,7 +3626,7 @@ function esconderValores(raiz) {
   if (!PRIV.on || !raiz) return;
   const base = raiz.nodeType === 3 ? raiz.parentNode : raiz; if (!base || !base.closest) return;
   if (base.closest('.sens, script, style, textarea')) return;
-  const w = document.createTreeWalker(raiz.nodeType === 3 ? base : raiz, NodeFilter.SHOW_TEXT, { acceptNode: n => /R\$/.test(n.nodeValue) && !n.parentElement.closest('.sens, script, style, textarea') ? 1 : 2 });
+  const w = document.createTreeWalker(raiz.nodeType === 3 ? base : raiz, NodeFilter.SHOW_TEXT, { acceptNode: n => RE_VALOR.test(n.nodeValue) && !n.parentElement.closest('.sens, script, style, textarea') ? 1 : 2 });
   const nos = []; while (w.nextNode()) nos.push(w.currentNode);
   for (const n of nos) {
     const f = document.createDocumentFragment();
