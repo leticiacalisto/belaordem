@@ -436,6 +436,7 @@ const ICON = {
   store: '<path d="M4 9h16l-1.2-5H5.2zM5 9v11h14V9M9.5 20v-6h5v6"/>',
   clipboard: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9zM9 11h6M9 15h4"/>',
   trend: '<path d="m3 17 6-6 4 4 8-8M15 7h6v6"/>',
+  ext: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
   database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
@@ -548,7 +549,7 @@ function salvar() {
     el.textContent = 'Não foi possível salvar — baixe um backup';
   }
 }
-function commit(msg) { salvar(); render(); if (msg) toast(msg); }
+function commit(msg) { salvar(); render(); if (msg) toast(msg); try { agendarResumoEmpresa(); } catch (e) { /* ainda não carregou */ } }
 
 /* ---------- cálculos (as fórmulas do Notion) ---------- */
 function lucro(i) {
@@ -679,6 +680,7 @@ const UI = {
   envios: { tab: 'hoje' },
   repor: { mostrar: false },
   fluxo: { ano: hojeISO().slice(0, 4), tab: 'caixa', periodo: hojeISO().slice(0, 7), grupo: '' },
+  rev: { filtro: 'revisar', busca: '' },
   conc: { tab: 'pix', mes: '', fis: 'sem' },
   rent: { periodo: 'ano:' + hojeISO().slice(0, 4), q: '', ordem: 'lucro', dir: 'desc', soNeg: false },
   despesas: { periodo: hojeISO().slice(0, 7) },
@@ -760,7 +762,7 @@ const vazioLinha = (cols, msg = 'Nenhum item encontrado.') => `<tr><td class="em
 const NAV = [
   { sec: 'Gestão', itens: [['inicio', 'Início', 'home'], ['produtos', 'Produtos', 'box'], ['estoque', 'Estoque', 'layers'], ['compras', 'Compras', 'truck']] },
   { sec: 'Vendas', itens: [['hoje', 'Vendas do dia', 'clock'], ['marketing', 'Marketing e custos ML', 'megaphone'], ['vendas', 'Vendas', 'cart'], ['fisicas', 'Vendas Físicas', 'store'], ['encomendas', 'Encomendas', 'clipboard']] },
-  { sec: 'Financeiro', itens: [['financeiro', 'Resumo', 'pie'], ['dre', 'DRE', 'trend'], ['fluxo', 'Fluxo de caixa', 'wallet'], ['rentabilidade', 'Lucro por produto', 'bars'], ['conciliacao', 'Conciliação', 'clipboard']] },
+  { sec: 'Financeiro', itens: [['financeiro', 'Resumo', 'pie'], ['dre', 'DRE', 'trend'], ['fluxo', 'Fluxo de caixa', 'wallet'], ['rentabilidade', 'Lucro por produto', 'bars'], ['conciliacao', 'Conciliação', 'clipboard'], ['empresa', 'DRE da empresa', 'ext']] },
 ];
 function renderNav() {
   const sv = statsVF();
@@ -770,7 +772,7 @@ function renderNav() {
   };
   const fixada = $('#sidebar').classList.contains('fixada');
   $('#sidebar').innerHTML = `<div class="pin-row"><button class="btn-pin ${fixada ? 'fixada' : ''}" data-action="pinMenu" type="button" aria-label="Fixar menu aberto" aria-pressed="${fixada}" title="${fixada ? 'Desafixar menu' : 'Fixar menu aberto'}"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1v3.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg></button></div>
-  <nav class="nav" aria-label="Menu principal">${NAV.map(s => `<div class="nav-sec">${s.sec}</div>${s.itens.map(([k, l, i]) => `<button class="nav-item ${UI.view === k ? 'on' : ''}" data-action="go" data-view="${k}" ${UI.view === k ? 'aria-current="page"' : ''}>${ic(i)}<span>${l}</span>${badges[k] != null ? `<span class="badge">${badges[k]}</span>` : ''}</button>`).join('')}`).join('')}</nav>
+  <nav class="nav" aria-label="Menu principal">${NAV.map(s => `<div class="nav-sec">${s.sec}</div>${s.itens.map(([k, l, i]) => `<button class="nav-item ${UI.view === k ? 'on' : ''}" data-action="${k === 'empresa' ? 'abrirDreEmpresa' : 'go'}" data-view="${k}" ${k === 'empresa' ? 'title="Abre em outra aba (pode pedir login)"' : ''} ${UI.view === k ? 'aria-current="page"' : ''}>${ic(i)}<span>${l}</span>${badges[k] != null ? `<span class="badge">${badges[k]}</span>` : ''}</button>`).join('')}`).join('')}</nav>
   <div class="nav-foot"><button class="nav-item" data-action="sair">${ic('x')}<span>Sair</span></button></div>`;
 }
 
@@ -1196,7 +1198,8 @@ function vEncomendas() {
 /* =========================================================
    Financeiro: a mesma conta alimenta Resumo, DRE, Fluxo de caixa e Lucro por produto
    ========================================================= */
-const CATEGORIAS_DESPESA = ['Embalagens e materiais', 'Contador', 'Impostos', 'Software e assinaturas', 'Frete e correios (extra)', 'Pró-labore', 'Marketing fora do ML', 'Outras'];
+/* Contador, DAS e pró-labore são da empresa toda (não só da loja): ficam como categorias do EXTRATO (só caixa), não aqui, para não entrarem no DRE da loja */
+const CATEGORIAS_DESPESA = ['Embalagens e materiais', 'Software e assinaturas', 'Frete e correios (extra)', 'Marketing fora do ML', 'Outras'];
 const catsDespesa = () => [...new Set([...(DB.config.categoriasDespesa?.length ? DB.config.categoriasDespesa : CATEGORIAS_DESPESA), ...DB.despesas.map(d => d.categoria).filter(Boolean)])];
 /* Venda física pode ser venda de verdade, consumo próprio ou ajuste/perda de estoque (pelo nome ou pelo campo "tipo") */
 const CATEGORIAS_RECEITA = ['Venda fora da plataforma', 'Reembolso ou ressarcimento', 'Aporte (só entra no caixa)', 'Outras receitas'];
@@ -1213,7 +1216,13 @@ function canalUnidade(u, VFm) {
   if (u.vendaFisica) { const t = tipoVF(VFm[u.vendaFisica]); return t === 'venda' ? 'fisica' : t; }
   return 'ml';
 }
-const mesVazio = () => ({ fatMl: 0, fatFis: 0, un: 0, taxas: 0, fretes: 0, cmv: 0, consumo: 0, ajuste: 0, mkt: 0, outrasMl: 0, desp: {}, despTot: 0, compras: 0, recebidoFis: 0, rec: 0, recCaixa: 0 });
+const mesVazio = () => ({ fatMl: 0, fatFis: 0, un: 0, taxas: 0, fretes: 0, cmv: 0, consumo: 0, ajuste: 0, mkt: 0, outrasMl: 0, desp: {}, despTot: 0, compras: 0, recebidoFis: 0, rec: 0, recCaixa: 0, imp: 0 });
+/* Alíquota do imposto estimado de um mês "AAAA-MM": o valor do próprio mês ou, se não tem, o último informado antes dele
+   (config.impostoPorMes). Antes do primeiro mês informado vale o padrão (config.impostoPct, 4%). Mudar um mês não mexe nos anteriores. */
+function impostoPctMes(k) {
+  const mp = DB.config.impostoPorMes || {}, ate = Object.keys(mp).filter(m => m <= k).sort();
+  return ate.length ? +mp[ate[ate.length - 1]] || 0 : (DB.config.impostoPct ?? 4);
+}
 function finBase() {
   const VFm = mapaVF(), m = {}, lin = k => (m[k] = m[k] || mesVazio());
   for (const u of DB.estoque) {
@@ -1241,6 +1250,7 @@ function finBase() {
     else if (v.data) lin(v.data.slice(0, 7)).recebidoFis += v.pago || 0;
   }
   for (const r of DB.receitas || []) { if (!r.data) continue; const x = lin(r.data.slice(0, 7)); x.recCaixa += r.valor || 0; if (receitaNoLucro(r)) x.rec += r.valor || 0; }
+  for (const [k, x] of Object.entries(m)) x.imp = (x.fatMl + x.fatFis) * impostoPctMes(k) / 100;   // imposto estimado, mês a mês
   return m;
 }
 function somaMeses(m, ok) {
@@ -1253,7 +1263,7 @@ function somaMeses(m, ok) {
 }
 function contasMes(x) {
   const bruta = x.fatMl + x.fatFis, liq = bruta - x.taxas - x.fretes, lb = liq - x.cmv;
-  const despOp = x.despTot + x.mkt + x.outrasMl, imp = bruta * (DB.config.impostoPct || 0) / 100;
+  const despOp = x.despTot + x.mkt + x.outrasMl, imp = x.imp || 0;
   const op = lb - despOp - imp + x.rec, perdas = x.consumo + x.ajuste, ll = op - perdas;
   return { bruta, liq, lb, despOp, imp, op, perdas, ll };
 }
@@ -1326,6 +1336,54 @@ function vFinanceiro() {
   </div></div></div>`;
 }
 
+/* ---------- DRE da empresa: resumo mensal da frente 'mercado_livre' ----------
+   O site NUNCA fala direto com o projeto do painel UGC: chama a função bo-resumo-empresa (exige login), que guarda a chave secreta
+   e repassa para a função receber-resumo-frente do outro projeto. Nenhuma chave de serviço fica no site. */
+const URL_DRE_EMPRESA = 'https://www.leticiacalisto.com/empresa.html';   // página do DRE consolidado (login do projeto do painel)
+const FRENTE_RESUMO = 'mercado_livre';
+/* um resumo por mês: DRE da loja (mesmos números da tela) + caixa do Mercado Pago. Valores em reais, saídas positivas.
+   Sem extrato naquele mês, os campos de caixa não vão (o que já está lá é preservado). */
+function resumosMensais() {
+  const m = finBase(), cx = caixaPorMes() || {}, r2 = n => Math.round((+n || 0) * 100) / 100;
+  const meses = [...new Set([...Object.keys(m), ...Object.keys(cx)])].filter(k => /^\d{4}-\d{2}$/.test(k)).sort();
+  return meses.map(k => {
+    const x = m[k] || mesVazio(), c = contasMes(x), g = cx[k];
+    const linha = {
+      mes: k, receita_bruta: r2(c.bruta), impostos_estimados: r2(c.imp), custos_diretos: r2(x.cmv + x.taxas + x.fretes), despesas_proprias: r2(c.despOp),
+      outras_receitas: r2(x.rec), consumo_e_perdas: r2(c.perdas), resultado_frente: r2(c.ll),
+    };
+    if (g) Object.assign(linha, {
+      caixa_entradas: r2(g.ent), caixa_saidas: r2(-g.sai), saldo_conta: r2(g.saldo), transferencias_liquidas: r2(g.tr),
+      prolabore_pago: r2(-(g.g.prolabore || 0)), despesas_compartilhadas_pagas: r2(-(g.g.desp_emp || 0)), distribuicao_lucros_paga: r2(-(g.g.distrib || 0)), das_pago: r2(-(g.g.das || 0)),
+    });
+    return linha;
+  });
+}
+const RESUMO = { enviando: false, timer: null, erro: '', falhas: 0 };
+async function enviarResumoEmpresa({ manual = false } = {}) {
+  if (RESUMO.enviando || !sessao()) return;
+  if (!manual && RESUMO.falhas >= 2) return;   // não insiste sozinho se a função ainda não foi publicada
+  const env = DB.config.resumoEnvio = DB.config.resumoEnvio || { hashes: {} };
+  const todas = resumosMensais(), mudaram = manual ? todas : todas.filter(l => env.hashes[l.mes] !== JSON.stringify(l));
+  if (!mudaram.length) { if (manual) toast('O DRE da empresa já está com os números de hoje.'); return; }
+  RESUMO.enviando = true; RESUMO.erro = '';
+  try {
+    await chamar('bo-resumo-empresa', { method: 'POST', body: { frente: FRENTE_RESUMO, linhas: mudaram } });
+    for (const l of mudaram) env.hashes[l.mes] = JSON.stringify(l);
+    env.em = new Date().toISOString(); RESUMO.falhas = 0;
+    salvar();
+    if (manual) toast(`Resumo enviado (${plural(mudaram.length, 'mês', 'meses')})`);
+  } catch (e) {
+    RESUMO.erro = e.message || String(e); RESUMO.falhas++;
+    if (manual) toast('Não foi possível enviar o resumo: ' + RESUMO.erro, true);
+  } finally { RESUMO.enviando = false; if (UI.view === 'dre') render(); }
+}
+function agendarResumoEmpresa() { clearTimeout(RESUMO.timer); RESUMO.timer = setTimeout(() => enviarResumoEmpresa(), 5000); }
+const statusResumoEmpresa = () => {
+  const em = DB.config.resumoEnvio?.em;
+  return RESUMO.enviando ? 'Enviando resumo para o DRE da empresa...' : RESUMO.erro ? `Último envio falhou: ${esc(RESUMO.erro)}` : em ? `Último envio ao DRE da empresa: ${new Date(em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}` : 'Resumo ainda não enviado ao DRE da empresa.';
+};
+
 /* ---------- DRE ---------- */
 function dreLinhas(ano, m) {
   const keys = Object.keys(m).filter(k => k.startsWith(ano)).sort();
@@ -1341,7 +1399,7 @@ function dreLinhas(ano, m) {
     ['(−) Publicidade e Minha página do ML (pago por fora)', x => x.mkt], ['(−) Outras cobranças pagas por fora ao ML (devolução, impostos)', x => x.outrasMl],
     ['(+) Outras receitas (lançadas à mão)', x => x.rec],
     ...cats.map(ct => [`(−) Despesas: ${ct}`, x => x.desp[ct] || 0, 'sub']),
-    ...(DB.config.impostoPct ? [[`(−) Impostos estimados (${fmtIn(DB.config.impostoPct)}%)`, x => cm(x).imp]] : []),
+    ...(DB.config.impostoPct || Object.keys(DB.config.impostoPorMes || {}).length ? [['(−) Impostos estimados', x => cm(x).imp]] : []),
     ['Resultado operacional', x => cm(x).op, 'b'],
     ['(−) Consumo próprio (a custo)', x => x.consumo], ['(−) Perdas e ajustes de estoque (a custo)', x => x.ajuste],
     ['Lucro líquido', x => cm(x).ll, 'b total'],
@@ -1351,17 +1409,20 @@ function dreLinhas(ano, m) {
 }
 function vDRE() {
   mktFin();
+  agendarResumoEmpresa();   // ao abrir o DRE, manda o resumo se algum mês mudou
   const U = UI.dre, m = finBase();
   const anos = [...new Set([hojeISO().slice(0, 4), ...Object.keys(m).map(k => k.slice(0, 4))])].sort().reverse();
   const { keys, L, soma } = dreLinhas(U.ano, m);
   const fmt = (v, t) => t === 'pct' ? pct(v) : brl(v);
   const cel = (x, f, t) => { const v = f(x); return `<td class="num ${t.includes('b') && v < 0 ? 'neg' : ''}">${t.includes('b') ? `<b style="font-weight:500">${fmt(v, t)}</b>` : fmt(v, t)}</td>`; };
-  return `<div class="page">${pageHead('DRE', 'Demonstrativo de resultado do ano, mês a mês: do faturamento até o lucro que sobra de verdade', `<button class="btn" data-action="dreCsv">Baixar CSV</button><button class="btn" data-action="go" data-view="despesas">Ver despesas</button>`)}
+  return `<div class="page">${pageHead('DRE', 'Demonstrativo de resultado do ano, mês a mês: do faturamento até o lucro que sobra de verdade', `<button class="btn" data-action="dreCsv">Baixar CSV</button><button class="btn" data-action="go" data-view="despesas">Ver despesas</button><button class="btn btn-dark" data-action="enviarResumoEmpresa" ${RESUMO.enviando ? 'disabled' : ''}>Enviar resumo para o DRE da empresa</button>`)}
   ${avisoCobr()}
+  <p class="hint" style="margin:-4px 0 12px">${statusResumoEmpresa()}</p>
   <div class="toolbar">${select('dre.ano', U.ano, anos.map(a => [a, a]), 'Ano')}
-    <label class="check" style="gap:8px">Imposto estimado sobre o faturamento (%) <input id="dre-imp" inputmode="decimal" value="${fmtIn(DB.config.impostoPct || 0)}" style="width:70px"></label><button class="btn btn-sm btn-soft" data-action="dreImposto">Aplicar</button></div>
+    <label class="check" style="gap:8px" title="Vale para os meses que não têm alíquota própria e vêm antes do primeiro mês informado">Alíquota padrão do imposto estimado (%) <input id="dre-imp" inputmode="decimal" value="${fmtIn(DB.config.impostoPct ?? 4)}" style="width:70px"></label><button class="btn btn-sm btn-soft" data-action="dreImposto">Aplicar</button></div>
   ${keys.length ? `<div class="table-wrap livre"><table><thead><tr><th></th>${keys.map(k => `<th class="num">${MESES[+k.slice(5, 7) - 1].slice(0, 3)}</th>`).join('')}<th class="num">Total ${U.ano}</th></tr></thead><tbody>
   ${L.map(([rot, f, t = '']) => `<tr class="${t.includes('total') ? 'total' : ''} ${t.includes('sub') ? 'sub' : ''}"><td>${t.includes('b') ? `<b style="font-weight:500">${rot}</b>` : rot}</td>${keys.map(k => cel(m[k], f, t)).join('')}${cel(soma, f, t)}</tr>`).join('')}
+  <tr class="sub"><td>Alíquota do imposto estimado (%) <button class="btn btn-sm btn-soft" data-action="dreAliquotas" title="Salva as alíquotas digitadas nesta linha. Mês em branco usa o último informado antes dele.">Salvar alíquotas</button></td>${keys.map(k => `<td class="num"><input data-aliq-mes="${k}" inputmode="decimal" value="${esc(fmtIn((DB.config.impostoPorMes || {})[k]))}" placeholder="${fmtIn(impostoPctMes(k))}" style="width:56px;text-align:right" aria-label="Alíquota de ${nomeMes(k)}"></td>`).join('')}<td></td></tr>
   </tbody></table></div>` : '<div class="table-wrap livre"><table><tbody>' + vazioLinha(3, 'Sem movimento neste ano.') + '</tbody></table></div>'}
   <p class="note">Faturamento e custo entram no mês da venda. Tarifas e fretes são os reais de cada pedido. Do ML entra só o que você paga de fato à parte (os "Pagamentos feitos" da fatura: publicidade, Minha página, devolução e impostos cobrados por fora). Parcelamento, custo do Mercado Pago, frete e cancelamentos são debitados na própria venda e já estão na tarifa e no frete de cada pedido. Consumo próprio e perdas aparecem a custo, depois do resultado operacional, para não distorcer o custo das mercadorias vendidas.</p></div>`;
 }
@@ -1505,16 +1566,24 @@ function modalPagarNF(chave) {
 }
 
 /* ---------- Caixa real: o extrato da conta do Mercado Pago (tudo passa por ela: vendas do ML, Pix de clientes, compras e taxas) ---------- */
-const GRUPOS_CAIXA = [['ml', 'Mercado Livre (líquido)'], ['cli', 'Pix de clientes'], ['aporte', 'Aportes (líq.)'], ['outras', 'Outras entradas'], ['nf', 'Compras com NF'], ['div', 'Compras sem NF'], ['imp', 'Impostos e contador'], ['etq', 'Etiquetas ML'], ['pes', 'Pessoais e outros'], ['ret', 'Caixinha (guardar e retirar)']];
-const GRUPO_DE = { ml: 'ml', ml_pix: 'ml', ml_cancel: 'ml', ml_deb: 'ml', ml_reemb: 'ml', ml_cred: 'ml', pix_cli: 'cli', fis: 'cli', fis_sug: 'cli', aporte: 'aporte', aporte_dev: 'aporte', out_pos: 'outras', nf: 'nf', div: 'div', imp: 'imp', cont: 'imp', etq: 'etq', pes: 'pes', out_neg: 'pes', ret: 'ret' };
+const GRUPOS_CAIXA = [['ml', 'Mercado Livre (líquido)'], ['cli', 'Pix de clientes'], ['aporte', 'Aportes (líq.)'], ['outras', 'Outras entradas'], ['nf', 'Compras com NF'], ['div', 'Compras sem NF'], ['imp', 'Outros impostos e taxas (a revisar)'], ['etq', 'Etiquetas ML'], ['pes', 'Pessoais e outros (a revisar)'],
+  /* só caixa da empresa: nunca entram no DRE da loja (o DRE não lê o extrato; usa o imposto estimado) */
+  ['das', 'DAS / Simples Nacional'], ['desp_emp', 'Despesa da empresa (compartilhada)'], ['prolabore', 'Pró-labore'], ['distrib', 'Distribuição de lucros'], ['transf', 'Transferência entre contas'],
+  ['ret', 'Caixinha (guardar e retirar)']];
+const GRUPOS_SO_CAIXA = ['das', 'desp_emp', 'prolabore', 'distrib', 'transf'];
+const GRUPO_DE = { das: 'das', desp_emp: 'desp_emp', prolabore: 'prolabore', distrib: 'distrib', transf: 'transf', ml: 'ml', ml_pix: 'ml', ml_cancel: 'ml', ml_deb: 'ml', ml_reemb: 'ml', ml_cred: 'ml', pix_cli: 'cli', fis: 'cli', fis_sug: 'cli', aporte: 'aporte', aporte_dev: 'aporte', out_pos: 'outras', nf: 'nf', div: 'div', imp: 'imp', cont: 'imp', etq: 'etq', pes: 'pes', out_neg: 'pes', ret: 'ret' };
 const NOME_CLASSE = { ml: 'Liberação de venda ML', ml_pix: 'Venda ML paga com Pix', ml_cancel: 'Liberação cancelada', ml_deb: 'Débito ML (devolução/reclamação)', ml_reemb: 'Reembolso', ml_cred: 'Crédito de tarifa', pix_cli: 'Pix de cliente (sem venda)', fis: 'Venda física', fis_sug: 'Venda física (sugerida)', aporte: 'Aporte', aporte_dev: 'Devolução de aporte', out_pos: 'Outra entrada', nf: 'Compra com NF', div: 'Compra sem NF', imp: 'Imposto', cont: 'Contador', etq: 'Impressão de etiquetas ML', pes: 'Pessoal/outros', out_neg: 'Outra saída', ret: 'Caixinha (guardar/retirar)' };
+Object.assign(NOME_CLASSE, { imp: 'Outros impostos e taxas', das: 'DAS / Simples Nacional', desp_emp: 'Despesa da empresa (compartilhada)', prolabore: 'Pró-labore', distrib: 'Distribuição de lucros', transf: 'Transferência entre contas' });
+/* classes que o usuário pode escolher ao revisar um movimento do extrato, por sinal do valor */
+const CLASSES_SAIDA = ['das', 'desp_emp', 'prolabore', 'distrib', 'transf', 'imp', 'pes', 'out_neg'], CLASSES_ENTRADA = ['transf', 'aporte', 'out_pos'];
 function caixaPorMes() {
   const e = DB.extrato; if (!e?.movs?.length) return null;
   const m = {};
   for (const x of e.movs) {
-    const k = x.d.slice(0, 7), l = (m[k] = m[k] || { ent: 0, sai: 0, liq: 0, cx: 0, g: {}, n: 0 }), g = GRUPO_DE[x.c] || 'outras';
+    const k = x.d.slice(0, 7), l = (m[k] = m[k] || { ent: 0, sai: 0, liq: 0, cx: 0, tr: 0, g: {}, n: 0 }), g = GRUPO_DE[x.c] || 'outras';
     l.n++; l.g[g] = (l.g[g] || 0) + x.v;
     if (x.c === 'ret') { l.cx -= x.v; continue; }   // caixinha: o dinheiro só muda de lugar, continua sendo caixa
+    if (x.c === 'transf') { l.tr += x.v; l.liq += x.v; continue; }   // entre contas: mexe no saldo, mas não é entrada nem saída da empresa
     if (x.v > 0) l.ent += x.v; else l.sai += x.v; l.liq += x.v;
   }
   let ac = 0, cx = 0; for (const k of Object.keys(m).sort()) { ac += m[k].liq; cx += m[k].cx; m[k].saldo = ac; m[k].guardado = cx; m[k].conta = ac - cx; }
@@ -1576,6 +1645,7 @@ function fluxoCaixa() {
   const nomeG = Object.fromEntries(GRUPOS_CAIXA);
   const tot = { ent: 0, sai: 0, liq: 0, g: {} };
   keys.forEach(k => { tot.ent += m[k].ent; tot.sai += m[k].sai; tot.liq += m[k].liq; for (const [g, v] of Object.entries(m[k].g)) tot.g[g] = (tot.g[g] || 0) + v; });
+  const cols = GRUPOS_CAIXA.filter(([g]) => g !== 'ret' && (!GRUPOS_SO_CAIXA.includes(g) || Math.abs(tot.g[g] || 0) > 0.004));   // as colunas novas só aparecem quando há movimento
   const cel = v => v == null || Math.abs(v) < 0.005 ? '<td class="num faint">—</td>' : `<td class="num ${v < 0 ? 'neg' : ''}">${brl(v)}</td>`;
   return `<div class="card block" style="margin-bottom:18px"><div class="hoje-grid">
       ${kpiFin(`Caixa total (Mercado Pago)`, brl(saldo), `<div class="kpi-s">conta ${brl(conta)} + caixinha ${brl(guardado)} · em ${fdata(e.ate)} · ${confere ? '<span style="color:#0f766e">confere com o extrato</span>' : '<span class="neg">não confere com o extrato</span>'}</div>`)}
@@ -1583,9 +1653,9 @@ function fluxoCaixa() {
       ${kpiFin('A pagar a fornecedores', brl(aPagar), `<div class="kpi-s">${plural(abertas.length, 'nota em aberto', 'notas em aberto')} · <button class="btn-link" data-action="concIr" data-tab="forn">ver</button></div>`)}
       ${kpiFin('A receber de clientes', brl(aReceber), `<div class="kpi-s">vendas físicas pendentes · <button class="btn-link" data-action="go" data-view="fisicas">ver</button></div>`)}
     </div></div>
-    <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Resultado do mês</th><th class="num">Na caixinha</th><th class="num">Caixa total</th>${GRUPOS_CAIXA.filter(([g]) => g !== 'ret').map(([k, n]) => `<th class="num">${n}</th>`).join('')}</tr></thead><tbody>
-    ${keys.map(k => `<tr class="clic" data-action="caixaMes" data-mes="${k}" title="Ver os ${m[k].n} movimentos"><td>${nomeMes(k)}</td><td class="num">${brl(m[k].ent)}</td><td class="num neg">${brl(m[k].sai)}</td><td class="num ${m[k].liq < 0 ? 'neg' : ''}"><b style="font-weight:500">${brl(m[k].liq)}</b></td><td class="num">${brl(m[k].guardado)}</td><td class="num">${brl(m[k].saldo)}</td>${GRUPOS_CAIXA.filter(([g]) => g !== 'ret').map(([g]) => cel(m[k].g[g])).join('')}</tr>`).join('')}
-    <tr class="total"><td>Total</td><td class="num">${brl(tot.ent)}</td><td class="num neg">${brl(tot.sai)}</td><td class="num">${brl(tot.liq)}</td><td class="num">${brl(guardado)}</td><td class="num">${brl(saldo)}</td>${GRUPOS_CAIXA.filter(([g]) => g !== 'ret').map(([g]) => cel(tot.g[g])).join('')}</tr></tbody></table></div>
+    <div class="table-wrap livre"><table><thead><tr><th>Mês</th><th class="num">Entrou</th><th class="num">Saiu</th><th class="num">Resultado do mês</th><th class="num">Na caixinha</th><th class="num">Caixa total</th>${cols.map(([k, n]) => `<th class="num">${n}</th>`).join('')}</tr></thead><tbody>
+    ${keys.map(k => `<tr class="clic" data-action="caixaMes" data-mes="${k}" title="Ver os ${m[k].n} movimentos"><td>${nomeMes(k)}</td><td class="num">${brl(m[k].ent)}</td><td class="num neg">${brl(m[k].sai)}</td><td class="num ${m[k].liq < 0 ? 'neg' : ''}"><b style="font-weight:500">${brl(m[k].liq)}</b></td><td class="num">${brl(m[k].guardado)}</td><td class="num">${brl(m[k].saldo)}</td>${cols.map(([g]) => cel(m[k].g[g])).join('')}</tr>`).join('')}
+    <tr class="total"><td>Total</td><td class="num">${brl(tot.ent)}</td><td class="num neg">${brl(tot.sai)}</td><td class="num">${brl(tot.liq)}</td><td class="num">${brl(guardado)}</td><td class="num">${brl(saldo)}</td>${cols.map(([g]) => cel(tot.g[g])).join('')}</tr></tbody></table></div>
     ${aEntrarHTML(naoLib)}
     <p class="note">Vem do extrato da conta do Mercado Pago (${fdata(e.de)} a ${fdata(e.ate)}), que é por onde passam as vendas do ML, os Pix dos clientes, as compras e as taxas. Clique num mês para ver os movimentos. O ML entra líquido (já sem tarifa e frete). Guardar e retirar da caixinha só muda o dinheiro de lugar dentro da mesma conta: não entra em Entrou/Saiu, e o valor guardado continua somado no Caixa total (sem contar os rendimentos, que o extrato não mostra). Aporte é dinheiro seu ou da família que entrou. Para fechar outubro em diante, importe o extrato novo.</p>`;
 }
@@ -1602,11 +1672,52 @@ function modalCaixaMes(k) {
   $('#cx-grupo')?.addEventListener('change', ev => { UI.fluxo.grupo = ev.target.value; modalCaixaMes(k); });
 }
 
+/* ---------- Revisar extrato: reclassifica movimentos (só caixa, nunca o DRE). A sugestão vem de palavras-chave e NADA muda sem você confirmar ---------- */
+const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function sugerirClasse(x) {
+  const t = semAcento(x.t);
+  if (/nubank|nu bank|nu pagamentos/.test(t) && !/pagamento de conta/.test(t)) return 'transf';   // "Pagamento de conta Nu Pagamentos" é fatura de cartão, não transferência
+  if (x.v > 0) return null;
+  if (/simples nacional|\bdas\b|pgdas|\bdarf\b|receita federal/.test(t)) return 'das';
+  if (/pro.?labore/.test(t) || /leticia\s+(\w+\s+)?calisto/.test(t)) return 'prolabore';
+  if (/distribuicao de lucro|dividendo/.test(t)) return 'distrib';
+  if (/contab|contador|efecon/.test(t)) return 'desp_emp';
+  if (/secretaria|municipio|prefeitura|sefaz|iptu|\biss\b|alvara|junta comercial/.test(t)) return 'imp';
+  return null;
+}
+const CLASSES_REVISAR = ['imp', 'cont', 'pes', 'out_neg', 'out_pos'];   // as colunas que misturavam coisas (Impostos e contador, Pessoais e outros, outras entradas/saídas)
+function modalRevisarExtrato() {
+  const e = DB.extrato; if (!e?.movs?.length) return toast('Ainda não há extrato importado.', true);
+  const R = UI.rev, q = semAcento(R.busca);
+  let lista = e.movs.map((x, i) => ({ x, i })).filter(({ x }) => R.filtro === 'todos' || CLASSES_REVISAR.includes(x.c) || x.cOrig);
+  if (q) lista = lista.filter(({ x }) => semAcento(x.t).includes(q) || String(x.v).replace('.', ',').includes(q) || fdata(x.d).includes(q));
+  lista.sort((a, b) => b.x.d.localeCompare(a.x.d));
+  const total = lista.length, linhas = lista.slice(0, 150);
+  const linha = ({ x, i }) => {
+    const sug = sugerirClasse(x), ops = [...new Set([x.c, ...(x.v < 0 ? CLASSES_SAIDA : CLASSES_ENTRADA)])], alvo = sug && sug !== x.c ? sug : x.c;
+    return `<tr><td style="white-space:nowrap">${fdata(x.d)}</td><td class="muted" style="max-width:230px;white-space:normal">${esc(x.t || '')}</td><td class="num ${x.v < 0 ? 'neg' : ''}" style="white-space:nowrap">${brl(x.v)}</td>
+      <td style="max-width:170px;white-space:normal"><span class="chip">${esc(NOME_CLASSE[x.c] || x.c)}</span>${x.cOrig ? `<div class="hint">era: ${esc(NOME_CLASSE[x.cOrig] || x.cOrig)}</div>` : ''}${sug && sug !== x.c ? `<div class="hint">sugestão: ${esc(NOME_CLASSE[sug])}</div>` : ''}</td>
+      <td><select class="sel" style="min-width:190px;max-width:220px" data-rev-sel="${i}" aria-label="Nova categoria">${ops.map(c => `<option value="${c}" ${c === alvo ? 'selected' : ''}>${esc(NOME_CLASSE[c] || c)}</option>`).join('')}</select></td>
+      <td style="white-space:nowrap"><button class="btn btn-sm btn-dark" data-action="reclassificarMov" data-i="${i}">Confirmar</button>${x.cOrig ? ` <button class="btn btn-sm btn-soft" data-action="desfazerMov" data-i="${i}">Desfazer</button>` : ''}</td></tr>`;
+  };
+  abrirModal({
+    titulo: 'Revisar extrato', largura: 1040, rodape: '<button class="btn btn-dark" data-action="fecharModal">Fechar</button>',
+    corpo: `<div class="toolbar"><select class="sel" id="rev-filtro" aria-label="Quais movimentos"><option value="revisar" ${R.filtro === 'revisar' ? 'selected' : ''}>A revisar (impostos, contador, pessoais, outros)</option><option value="todos" ${R.filtro === 'todos' ? 'selected' : ''}>Todos os movimentos</option></select>
+      <div class="field-search">${ic('search', 18)}<input id="rev-busca" type="search" value="${esc(R.busca)}" placeholder="Buscar descrição, valor ou data (Enter)" autocomplete="off"></div>
+      <span class="hint">${plural(total, 'movimento', 'movimentos')}${total > 150 ? ' · mostrando 150, use a busca' : ''}</span></div>
+      <p class="hint" style="margin:0 0 8px">Pró-labore, despesa da empresa, distribuição de lucros, transferência e DAS são <b>só de caixa</b>: nunca entram no DRE da loja. Nada é reclassificado sozinho: escolha e clique em Confirmar (dá para desfazer).</p>
+      <div class="table-wrap" style="max-height:56vh;overflow:auto"><table><thead><tr><th>Data</th><th>Descrição</th><th class="num">Valor</th><th>Categoria atual</th><th>Nova categoria</th><th></th></tr></thead><tbody>
+      ${linhas.map(linha).join('') || vazioLinha(6, 'Nada para revisar.')}</tbody></table></div>`,
+  });
+  $('#rev-filtro')?.addEventListener('change', ev => { UI.rev.filtro = ev.target.value; modalRevisarExtrato(); });
+  $('#rev-busca')?.addEventListener('change', ev => { UI.rev.busca = ev.target.value; modalRevisarExtrato(); });
+}
+
 /* ---------- Fluxo de caixa (visão mensal + lançamentos manuais de despesas e receitas) ---------- */
 function vFluxo() {
   mktFin();
   const U = UI.fluxo, m = finBase(), nLanc = DB.despesas.length + (DB.receitas || []).length;
-  return `<div class="page">${pageHead('Fluxo de caixa', 'Entradas, saídas e os lançamentos manuais (despesas e receitas) num lugar só', `<button class="btn" data-action="novaReceita">${ic('plus', 18)} Nova receita</button><button class="btn btn-dark" data-action="novaDespesa">${ic('plus', 18)} Nova despesa</button>`)}
+  return `<div class="page">${pageHead('Fluxo de caixa', 'Entradas, saídas e os lançamentos manuais (despesas e receitas) num lugar só', `${U.tab === 'caixa' && DB.extrato?.movs?.length ? '<button class="btn" data-action="revisarExtrato">Revisar extrato</button>' : ''}<button class="btn" data-action="novaReceita">${ic('plus', 18)} Nova receita</button><button class="btn btn-dark" data-action="novaDespesa">${ic('plus', 18)} Nova despesa</button>`)}
   ${avisoCobr()}${tabs('fluxo.tab', U.tab, [['caixa', 'Caixa (Mercado Pago)'], ['mensal', 'Resultado por mês'], ['lancamentos', 'Lançamentos', nLanc]])}
   ${U.tab === 'lancamentos' ? fluxoLancamentos(m) : U.tab === 'mensal' ? fluxoMensal(m) : fluxoCaixa()}</div>`;
 }
@@ -3727,6 +3838,21 @@ const ACOES = {
   addNaCompra: el => { const g = comprasAgrupadas().find(x => x.chave === el.dataset.chave); if (g) modalCompra({ fornecedor: g.fornecedor || '', nf: g.nf || '', data: g.dFim || '' }); },
   novaFisica: () => modalFisicaNova(),
   caixaMes: el => modalCaixaMes(el.dataset.mes),
+  revisarExtrato: () => modalRevisarExtrato(),
+  enviarResumoEmpresa: () => enviarResumoEmpresa({ manual: true }),
+  abrirDreEmpresa: () => { window.open(URL_DRE_EMPRESA, '_blank', 'noopener'); },
+  reclassificarMov: el => {
+    const i = +el.dataset.i, x = DB.extrato?.movs[i], novo = document.querySelector(`[data-rev-sel="${i}"]`)?.value;
+    if (!x || !novo) return;
+    if (novo === x.c) return toast('Escolha uma categoria diferente da atual.', true);
+    x.cOrig = x.cOrig || x.c; x.c = novo;                       // guarda a classe de origem para poder desfazer
+    if (x.cOrig === x.c) delete x.cOrig;
+    commit(`Movimento classificado como ${NOME_CLASSE[novo] || novo}`); modalRevisarExtrato();
+  },
+  desfazerMov: el => {
+    const x = DB.extrato?.movs[+el.dataset.i]; if (!x?.cOrig) return;
+    x.c = x.cOrig; delete x.cOrig; commit('Classificação original restaurada'); modalRevisarExtrato();
+  },
   concIr: el => { UI.conc.tab = el.dataset.tab; UI.conc.mes = ''; go('conciliacao'); },
   concRecarregar: () => { ML.pedidosErro = null; render(); },
   concLancar: el => modalLancarPix(+el.dataset.i),
@@ -3952,6 +4078,16 @@ const ACOES = {
   },
   rentOrdenar: el => { const U = UI.rent, c = el.dataset.col; U.dir = U.ordem === c && U.dir === 'desc' ? 'asc' : 'desc'; U.ordem = c; render(); },
   dreImposto: () => { const n = parseNum(val('dre-imp')); if (Number.isNaN(n) || n < 0 || n > 60) return erro('Confira o percentual.'); DB.config.impostoPct = n || 0; commit(n ? `Imposto estimado: ${fmtIn(n)}%` : 'Imposto estimado removido'); },
+  dreAliquotas: () => {
+    const mp = { ...(DB.config.impostoPorMes || {}) };
+    for (const el of document.querySelectorAll('[data-aliq-mes]')) {
+      const k = el.dataset.aliqMes, txt = el.value.trim();
+      if (!txt) { delete mp[k]; continue; }
+      const n = parseNum(txt); if (Number.isNaN(n) || n < 0 || n > 60) return erro(`Confira a alíquota de ${nomeMes(k)}.`);
+      mp[k] = n;
+    }
+    DB.config.impostoPorMes = mp; commit('Alíquotas do imposto estimado salvas');
+  },
   dreCsv: () => {
     const mm = finBase(), { keys, L, soma } = dreLinhas(UI.dre.ano, mm);
     const f = (v, t) => v == null ? '' : (t && t.includes('pct') ? (v * 100).toFixed(1) : v.toFixed(2)).replace('.', ',');
