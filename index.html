@@ -896,7 +896,7 @@ function vInicio() {
         ${vencL.length ? `<ul class="mini-list">${vencL.map(x => `<li><span class="ml-name" title="${esc(P[x.p]?.nome)}">${esc(P[x.p]?.nome || '—')} <span class="faint">· ${x.n} un.</span></span>${chipValidade(x.v)}</li>`).join('')}</ul>` : '<p class="empty-note">Nada vencendo nos próximos 4 meses</p>'}
       </div>
       <div class="card side-card">
-        <div class="side-head"><h2>Repor estoque</h2><span class="hint">até 10 unidades</span></div>
+        <div class="side-head"><h2>Repor estoque</h2><span style="display:flex;align-items:center;gap:10px"><span class="hint">até 10 unidades</span>${reporL.length ? `<button class="btn btn-sm btn-soft" data-action="reporCopiar" title="Copiar a lista de produtos para repor">${ic('clipboard', 14)}<span>Copiar</span></button>` : ''}</span></div>
         ${reporL.length ? `<ul class="mini-list rep-lista">${reporL.map(x => `<li><span class="ml-name" title="${esc(P[x.id]?.nome)}">${esc(P[x.id]?.nome || '—')}</span><span class="faint" style="white-space:nowrap">${x.n30 ? `${x.n30} vend. 30d · ` : ''}<b style="color:${x.disp ? 'var(--text)' : 'var(--red)'}">${x.disp} disp.</b></span><button class="ghost-ic" data-action="reporIgnorar" data-id="${x.id}" title="Não repor este produto" aria-label="Ignorar ${esc(P[x.id]?.nome)}">${ic('x', 14)}</button></li>`).join('')}</ul>` : '<p class="empty-note">Nada para repor</p>'}
         ${reporIgn.length ? `<p class="hint" style="margin:8px 0 0"><button class="btn-link" data-action="reporMostrar">${UI.repor.mostrar ? 'Esconder' : 'Ver'} ignorados (${reporIgn.length})</button></p>${UI.repor.mostrar ? `<ul class="mini-list">${reporIgn.map(x => `<li><span class="ml-name faint">${esc(P[x.id]?.nome || '—')}</span><button class="btn btn-sm btn-soft" data-action="reporRestaurar" data-id="${x.id}">Voltar</button></li>`).join('')}</ul>` : ''}` : ''}
       </div>
@@ -4102,6 +4102,14 @@ const ACOES = {
   mlEnviarValor: el => modalEnviarValorML(el.dataset.item),
   reporIgnorar: el => { DB.config.reporIgnorar = [...new Set([...(DB.config.reporIgnorar || []), el.dataset.id])]; commit('Produto ignorado na lista de reposição'); },
   reporRestaurar: el => { DB.config.reporIgnorar = (DB.config.reporIgnorar || []).filter(x => x !== el.dataset.id); commit('Produto voltou para a lista de reposição'); },
+  reporCopiar: async () => {
+    const P = mapaProdutos(), l = listaRepor();
+    if (!l.length) return toast('Nada para repor.', true);
+    const txt = l.map(x => `${P[x.id]?.nome || '—'} | ${x.disp} disp. | ${x.n30} vend. 30d`).join('\n');
+    try { await navigator.clipboard.writeText(txt); }
+    catch (e) { const t = document.createElement('textarea'); t.value = txt; t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); t.remove(); if (!ok) return toast('Não foi possível copiar.', true); }
+    toast(plural(l.length, 'produto copiado', 'produtos copiados'));
+  },
   reporMostrar: () => { UI.repor.mostrar = !UI.repor.mostrar; render(); },
   conferencia: () => modalConferencia(),
   mlVincular: () => modalVincularAnuncios(),
